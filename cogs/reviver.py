@@ -53,6 +53,55 @@ def build_reviver_status_panel_embed() -> discord.Embed:
     return embed
 
 
+def _is_status_panel_message(message: discord.Message, bot_id: int) -> bool:
+    if getattr(message.author, "id", None) != bot_id:
+        return False
+    if not message.embeds:
+        return False
+    embed = message.embeds[0]
+    footer_text = getattr(getattr(embed, "footer", None), "text", "") or ""
+    return embed.title == REVIVER_STATUS_PANEL_TITLE or footer_text == REVIVER_STATUS_PANEL_MARKER
+
+
+async def _collect_status_panel_messages(
+    channel: discord.abc.Messageable,
+    bot_id: int,
+) -> list[discord.Message]:
+    if not hasattr(channel, "history"):
+        return []
+
+    matches: list[discord.Message] = []
+    try:
+        async for message in channel.history(limit=None, oldest_first=False):
+            if _is_status_panel_message(message, bot_id):
+                matches.append(message)
+    except (discord.Forbidden, discord.HTTPException):
+        return []
+
+    return matches
+
+
+async def refresh_reviver_status_panels(bot: discord.Client) -> int:
+    """Refresh all reviver status panel messages across guild channels."""
+    if bot.user is None:
+        return 0
+
+    refreshed = 0
+    for guild in bot.guilds:
+        for channel in guild.text_channels:
+            messages = await _collect_status_panel_messages(channel, bot.user.id)
+            for message in messages:
+                try:
+                    await message.edit(
+                        embed=build_reviver_status_panel_embed(),
+                        view=ReviverStatusPanelView(),
+                    )
+                    refreshed += 1
+                except (discord.Forbidden, discord.HTTPException):
+                    continue
+    return refreshed
+
+
 class ReviverIssueModal(discord.ui.Modal, title="Flag an Issue"):
     def __init__(self, panel_view: "ReviverStatusPanelView"):
         super().__init__(timeout=None)

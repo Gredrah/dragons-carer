@@ -46,10 +46,10 @@ class ReviveBot(commands.Bot):
 
         # Re-register persistent views so buttons on old messages still work
         # after a restart. Import here to avoid circulars at module load time.
-        from cogs.buyer import ReviveRequestPanelView
+        from cogs.buyer import ReviveRequestPanelView, refresh_request_panels
         from cogs.moderation import ResolutionView
-        from cogs.reviver import AssignmentView, DeliveredView, ForwardedAssignmentView, PaymentView, ResignalView, ReviverStatusPanelView
-        from cogs.linking import BuyerRegistrationPanelView, ReviverRegistrationPanelView
+        from cogs.reviver import AssignmentView, DeliveredView, ForwardedAssignmentView, PaymentView, ResignalView, ReviverStatusPanelView, refresh_reviver_status_panels
+        from cogs.linking import BuyerRegistrationPanelView, ReviverRegistrationPanelView, refresh_registration_panels
 
         # NOTE: persistent views with dynamic custom_ids need a "template"
         # registration approach; the simplest correct pattern is to re-add a
@@ -82,8 +82,13 @@ class ReviveBot(commands.Bot):
             self.tree.copy_global_to(guild=guild)
             await self.tree.sync(guild=guild)
 
+        await refresh_request_panels(self)
+        await refresh_registration_panels(self)
+        await refresh_reviver_status_panels(self)
+
         await notifications.refresh_existing_order_notifications(self)
         await refresh_queued_orders(self)
+        await notifications.refresh_active_order_reminder(self)
         sync_linked_roles_loop.start(self)
         sync_linked_nicknames_loop.start(self)
         sweep_timeouts.start(self)

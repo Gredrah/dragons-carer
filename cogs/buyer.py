@@ -99,6 +99,55 @@ def build_request_panel_embed() -> discord.Embed:
     return embed
 
 
+def _is_request_panel_message(message: discord.Message, bot_id: int) -> bool:
+    if getattr(message.author, "id", None) != bot_id:
+        return False
+    if not message.embeds:
+        return False
+    embed = message.embeds[0]
+    footer_text = getattr(getattr(embed, "footer", None), "text", "") or ""
+    return embed.title == REQUEST_PANEL_TITLE or footer_text == "revive_request_panel"
+
+
+async def _collect_request_panel_messages(
+    channel: discord.abc.Messageable,
+    bot_id: int,
+) -> list[discord.Message]:
+    if not hasattr(channel, "history"):
+        return []
+
+    matches: list[discord.Message] = []
+    try:
+        async for message in channel.history(limit=None, oldest_first=False):
+            if _is_request_panel_message(message, bot_id):
+                matches.append(message)
+    except (discord.Forbidden, discord.HTTPException):
+        return []
+
+    return matches
+
+
+async def refresh_request_panels(bot: discord.Client) -> int:
+    """Refresh all existing revive request panel messages across guild channels."""
+    if bot.user is None:
+        return 0
+
+    refreshed = 0
+    for guild in bot.guilds:
+        for channel in guild.text_channels:
+            messages = await _collect_request_panel_messages(channel, bot.user.id)
+            for message in messages:
+                try:
+                    await message.edit(
+                        embed=build_request_panel_embed(),
+                        view=ReviveRequestPanelView(),
+                    )
+                    refreshed += 1
+                except (discord.Forbidden, discord.HTTPException):
+                    continue
+    return refreshed
+
+
 async def _delete_previous_panel_messages(channel: discord.abc.Messageable, bot_id: int, *, title: str) -> None:
     if not hasattr(channel, "history"):
         return

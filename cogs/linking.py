@@ -16,6 +16,10 @@ from state import Tier, tier_from_skill
 BUYER_API_KEY_URL = "https://www.torn.com/preferences.php#tab=api?step=addNewKey&title=ReviveStorefront-Buyer&user=basic,revivesfull"
 REVIVER_API_KEY_URL = "https://www.torn.com/preferences.php#tab=api?step=addNewKey&title=ReviveStorefront-Reviver&user=basic,revivesfull,skills"
 TORN_API_UNAVAILABLE_MESSAGE = "Couldn't reach the Torn API right now — try again in a moment."
+BUYER_REGISTRATION_PANEL_TITLE = "Buyer Registration Panel"
+REVIVER_REGISTRATION_PANEL_TITLE = "Seller / Medic Registration Panel"
+BUYER_REGISTRATION_PANEL_MARKER = "buyer_registration_panel"
+REVIVER_REGISTRATION_PANEL_MARKER = "reviver_registration_panel"
 
 
 def _parse_tier(value: str) -> str:
@@ -62,7 +66,7 @@ def _identity_matches_required_faction(
 
 def build_buyer_registration_panel_embed() -> discord.Embed:
     embed = discord.Embed(
-        title="Buyer Registration Panel",
+        title=BUYER_REGISTRATION_PANEL_TITLE,
         description=(
             "Register as a buyer to get access to revive requests.\n"
             "If you need to remove a link later, use `/unregister`."
@@ -77,13 +81,13 @@ def build_buyer_registration_panel_embed() -> discord.Embed:
         ),
         inline=False,
     )
-    embed.set_footer(text="buyer_registration_panel")
+    embed.set_footer(text=BUYER_REGISTRATION_PANEL_MARKER)
     return embed
 
 
 def build_reviver_registration_panel_embed() -> discord.Embed:
     embed = discord.Embed(
-        title="Seller / Medic Registration Panel",
+        title=REVIVER_REGISTRATION_PANEL_TITLE,
         description=(
             "Register as a seller/medic to get the reviver roles used by the bot.\n"
             "If you need to remove a link later, use `/unregister`."
@@ -108,8 +112,71 @@ def build_reviver_registration_panel_embed() -> discord.Embed:
             ),
             inline=False,
         )
-    embed.set_footer(text="reviver_registration_panel")
+    embed.set_footer(text=REVIVER_REGISTRATION_PANEL_MARKER)
     return embed
+
+
+def _panel_marker_for_embed(embed: discord.Embed) -> str:
+    return getattr(getattr(embed, "footer", None), "text", "") or ""
+
+
+def _is_registration_panel_message(message: discord.Message, bot_id: int) -> bool:
+    if getattr(message.author, "id", None) != bot_id:
+        return False
+    if not message.embeds:
+        return False
+
+    embed = message.embeds[0]
+    marker = _panel_marker_for_embed(embed)
+    return marker in {BUYER_REGISTRATION_PANEL_MARKER, REVIVER_REGISTRATION_PANEL_MARKER} or embed.title in {
+        BUYER_REGISTRATION_PANEL_TITLE,
+        REVIVER_REGISTRATION_PANEL_TITLE,
+    }
+
+
+def _registration_panel_payload(embed: discord.Embed) -> tuple[discord.Embed, discord.ui.View]:
+    marker = _panel_marker_for_embed(embed)
+    if marker == BUYER_REGISTRATION_PANEL_MARKER or embed.title == BUYER_REGISTRATION_PANEL_TITLE:
+        return build_buyer_registration_panel_embed(), BuyerRegistrationPanelView()
+    return build_reviver_registration_panel_embed(), ReviverRegistrationPanelView()
+
+
+async def _collect_registration_panel_messages(
+    channel: discord.abc.Messageable,
+    bot_id: int,
+) -> list[discord.Message]:
+    if not hasattr(channel, "history"):
+        return []
+
+    matches: list[discord.Message] = []
+    try:
+        async for message in channel.history(limit=None, oldest_first=False):
+            if _is_registration_panel_message(message, bot_id):
+                matches.append(message)
+    except (discord.Forbidden, discord.HTTPException):
+        return []
+
+    return matches
+
+
+async def refresh_registration_panels(bot: discord.Client) -> int:
+    """Refresh all buyer/reviver registration panel messages across guild channels."""
+    if bot.user is None:
+        return 0
+
+    refreshed = 0
+    for guild in bot.guilds:
+        for channel in guild.text_channels:
+            messages = await _collect_registration_panel_messages(channel, bot.user.id)
+            for message in messages:
+                embed = message.embeds[0]
+                next_embed, next_view = _registration_panel_payload(embed)
+                try:
+                    await message.edit(embed=next_embed, view=next_view)
+                    refreshed += 1
+                except (discord.Forbidden, discord.HTTPException):
+                    continue
+    return refreshed
 
 
 async def _delete_previous_panel_messages(channel: discord.abc.Messageable, bot_id: int, *, title: str, marker: str) -> None:
@@ -408,8 +475,8 @@ class LinkingCog(commands.Cog):
             return
 
         is_buyer = panel_type.value == "buyer"
-        title = "Buyer Registration Panel" if is_buyer else "Seller / Medic Registration Panel"
-        marker = "buyer_registration_panel" if is_buyer else "reviver_registration_panel"
+        title = BUYER_REGISTRATION_PANEL_TITLE if is_buyer else REVIVER_REGISTRATION_PANEL_TITLE
+        marker = BUYER_REGISTRATION_PANEL_MARKER if is_buyer else REVIVER_REGISTRATION_PANEL_MARKER
 
         if interaction.client.user is not None:
             await _delete_previous_panel_messages(
