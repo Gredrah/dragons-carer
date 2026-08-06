@@ -29,6 +29,7 @@ def _bool(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class Config:
     discord_token: str = os.getenv("DISCORD_TOKEN", "")
+    command_sync_guild_id: int = _int("COMMAND_SYNC_GUILD_ID", 0)
     forwarding_join_link: str = os.getenv("FORWARDING_JOIN_LINK", "")
 
     db_path: str = os.getenv("DB_PATH", "revive_bot.db")

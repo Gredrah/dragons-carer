@@ -73,6 +73,11 @@ class ReviveBot(commands.Bot):
         for review in await db.list_open_mod_reviews():
             self.add_view(ResolutionView(review["order_id"]))
 
+        if cfg.command_sync_guild_id:
+            guild = discord.Object(id=cfg.command_sync_guild_id)
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+
         await self.tree.sync()
 
         await refresh_request_panels(self)

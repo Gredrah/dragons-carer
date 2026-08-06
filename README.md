@@ -83,7 +83,7 @@ The nickname verification uses the Torn API key provided at registration wheneve
 pip install -r requirements.txt
 ```
 
-2. Copy and fill the environment file:
+1. Copy and fill the environment file:
 
 ```bash
 cp .env.example .env
@@ -95,15 +95,15 @@ On Windows PowerShell, use:
 Copy-Item .env.example .env
 ```
 
-3. Set the required values in `.env`:
+1. Set the required values in `.env`:
 
 - `DISCORD_TOKEN`
 - `DB_ENCRYPTION_KEY`
 - Optional revive price fields used in the revive request panel
 
-4. After the bot starts, use `/set_destination` to bind the storefront and ops guilds, plus the buyer, reviver, forwarding, ops, and mod-queue channels. For forwarding in another guild, use the raw channel ID.
+1. If you want new slash commands to appear immediately in a test guild, set `COMMAND_SYNC_GUILD_ID` to that guild before starting the bot. After the bot starts, use `/set_destination` to bind the storefront and ops guilds, plus the buyer, reviver, forwarding, ops, and mod-queue channels. For forwarding in another guild, use the raw channel ID.
 
-5. Run the bot:
+1. Run the bot:
 
 ```bash
 python bot.py
@@ -122,6 +122,7 @@ py -m unittest
 The most important values are listed below. See `.env.example` for the complete set.
 
 - `DISCORD_TOKEN` - bot token from the Discord Developer Portal
+- `COMMAND_SYNC_GUILD_ID` - optional guild ID for immediate slash-command sync during development
 - `FORWARDING_JOIN_LINK` - optional footer text for forwarded order embeds
 - `DB_ENCRYPTION_KEY` - Fernet key for encrypting stored Torn API keys
 - `DB_PATH` - SQLite database path

@@ -6,6 +6,7 @@ from discord.ext import commands
 
 import db
 import notifications
+from config import cfg
 
 ADMIN_ONLY_MESSAGE = "Admin permissions are required to change bot destinations."
 
@@ -125,6 +126,10 @@ class SettingsCog(commands.Cog):
                 "Admin permissions are required to change bot destinations.",
                 ephemeral=True,
             )
+
+
+if cfg.command_sync_guild_id:
+    SettingsCog = app_commands.guilds(discord.Object(id=cfg.command_sync_guild_id))(SettingsCog)
 
 
 async def setup(bot: commands.Bot):
