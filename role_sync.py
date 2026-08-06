@@ -363,10 +363,12 @@ async def sync_all_linked_roles(bot: commands.Bot) -> None:
             discord_id = str(member.id)
             has_buyer = discord_id in buyers
             has_reviver = discord_id in revivers
+            is_verified = has_buyer or has_reviver
             changed = await _sync_member_truth(
                 member,
                 has_buyer=has_buyer,
                 has_reviver=has_reviver,
+                is_verified=is_verified,
                 reason="periodic linked-role sync",
             )
             synced_members += 1
