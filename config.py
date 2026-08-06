@@ -29,13 +29,6 @@ def _bool(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class Config:
     discord_token: str = os.getenv("DISCORD_TOKEN", "")
-    storefront_guild_id: int = _int("STOREFRONT_GUILD_ID", 0)
-    ops_guild_id: int = _int("OPS_GUILD_ID", 0)
-    forwarding_guild_id: int = _int("FORWARDING_GUILD_ID", 0)
-    mod_queue_channel_id: int = _int("MOD_QUEUE_CHANNEL_ID", 0)
-    reviver_ping_channel_id: int = _int("REVIVER_PING_CHANNEL_ID", 0)
-    forwarding_channel_id: int = _int("FORWARDING_CHANNEL_ID", 0)
-    ops_channel_id: int = _int("OPS_CHANNEL_ID", 0)
     forwarding_join_link: str = os.getenv("FORWARDING_JOIN_LINK", "")
 
     db_path: str = os.getenv("DB_PATH", "revive_bot.db")

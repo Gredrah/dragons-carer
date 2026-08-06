@@ -99,10 +99,11 @@ Copy-Item .env.example .env
 
 - `DISCORD_TOKEN`
 - `DB_ENCRYPTION_KEY`
-- Guild IDs and channel IDs for your storefront, ops, forwarding, mod queue, and reviver ping channels
 - Optional revive price fields used in the revive request panel
 
-4. Run the bot:
+4. After the bot starts, use `/set_destination` to bind the storefront and ops guilds, plus the buyer, reviver, forwarding, ops, and mod-queue channels. For forwarding in another guild, use the raw channel ID.
+
+5. Run the bot:
 
 ```bash
 python bot.py
@@ -121,13 +122,6 @@ py -m unittest
 The most important values are listed below. See `.env.example` for the complete set.
 
 - `DISCORD_TOKEN` - bot token from the Discord Developer Portal
-- `STOREFRONT_GUILD_ID` - guild used for buyer-facing commands and panels
-- `OPS_GUILD_ID` - ops/mod guild used for role and nickname sync
-- `FORWARDING_GUILD_ID` - forwarding guild ID if used by your Discord setup
-- `MOD_QUEUE_CHANNEL_ID` - channel used for moderation alerts
-- `REVIVER_PING_CHANNEL_ID` - channel watched for active order reminder refreshes
-- `FORWARDING_CHANNEL_ID` - channel used for forwarded order claims
-- `OPS_CHANNEL_ID` - ops alert channel
 - `FORWARDING_JOIN_LINK` - optional footer text for forwarded order embeds
 - `DB_ENCRYPTION_KEY` - Fernet key for encrypting stored Torn API keys
 - `DB_PATH` - SQLite database path

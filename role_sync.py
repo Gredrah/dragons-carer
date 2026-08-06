@@ -7,10 +7,10 @@ import discord
 from discord.ext import commands
 
 import db
-from config import cfg
 from permissions import BUYER_ROLE_NAMES, REVIVER_ROLE_NAMES
 from state import tier_from_skill
 import torn_api
+import notifications
 
 
 LOGGER = logging.getLogger(__name__)
@@ -22,17 +22,20 @@ MANAGED_ROLE_NAMES = tuple(
 NICKNAME_SUFFIX_TEMPLATE = " [{torn_id}]"
 
 
-def _managed_guild_ids() -> tuple[int, ...]:
+async def _managed_guild_ids() -> tuple[int, ...]:
     guild_ids = []
-    if cfg.storefront_guild_id:
-        guild_ids.append(cfg.storefront_guild_id)
-    if cfg.ops_guild_id and cfg.ops_guild_id not in guild_ids:
-        guild_ids.append(cfg.ops_guild_id)
+    storefront_guild_id = await db.get_setting_int("storefront_guild_id")
+    ops_guild_id = await db.get_setting_int("ops_guild_id")
+    if storefront_guild_id:
+        guild_ids.append(storefront_guild_id)
+    if ops_guild_id and ops_guild_id not in guild_ids:
+        guild_ids.append(ops_guild_id)
     return tuple(guild_ids)
 
 
-def _nickname_guild_ids() -> tuple[int, ...]:
-    return (cfg.storefront_guild_id,) if cfg.storefront_guild_id else ()
+async def _nickname_guild_ids() -> tuple[int, ...]:
+    storefront_guild_id = await db.get_setting_int("storefront_guild_id")
+    return (storefront_guild_id,) if storefront_guild_id else ()
 
 
 def format_torn_nickname(torn_name: str, torn_id: int, *, max_length: int = 32) -> str:
@@ -283,7 +286,7 @@ async def sync_member_roles(bot: commands.Bot, discord_id: str, *, reason: str) 
     has_reviver = reviver is not None
     is_verified = has_buyer or has_reviver
 
-    for guild_id in _managed_guild_ids():
+    for guild_id in await _managed_guild_ids():
         guild = bot.get_guild(guild_id)
         if guild is None:
             continue
@@ -300,7 +303,7 @@ async def sync_member_roles(bot: commands.Bot, discord_id: str, *, reason: str) 
 
 
 async def sync_member_verification(bot: commands.Bot, discord_id: str, *, reason: str, verified: bool) -> None:
-    for guild_id in _managed_guild_ids():
+    for guild_id in await _managed_guild_ids():
         guild = bot.get_guild(guild_id)
         if guild is None:
             continue
@@ -355,7 +358,7 @@ async def sync_member_nickname(
         return False
 
     changed = False
-    for guild_id in _nickname_guild_ids():
+    for guild_id in await _nickname_guild_ids():
         guild = bot.get_guild(guild_id)
         if guild is None:
             continue
@@ -389,7 +392,7 @@ async def sync_all_linked_roles(bot: commands.Bot) -> None:
     buyers = {str(row["discord_id"]): row for row in await db.list_buyers()}
     revivers = {str(row["discord_id"]): row for row in await db.list_revivers()}
 
-    for guild_id in _managed_guild_ids():
+    for guild_id in await _managed_guild_ids():
         guild = bot.get_guild(guild_id)
         if guild is None:
             continue
@@ -421,3 +424,5 @@ async def sync_all_linked_roles(bot: commands.Bot) -> None:
             synced_members,
             changed_members,
         )
+
+    await notifications.refresh_online_revivers_list(bot)

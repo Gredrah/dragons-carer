@@ -93,6 +93,12 @@ CREATE TABLE IF NOT EXISTS sticky_messages (
     updated_at    REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS bot_settings (
+    name          TEXT PRIMARY KEY,
+    value         TEXT NOT NULL,
+    updated_at    REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS reviver_order_messages (
     order_id      TEXT NOT NULL,
     discord_id    TEXT NOT NULL,
@@ -533,6 +539,43 @@ async def upsert_sticky_message(name: str, channel_id: int, message_id: int) -> 
 async def delete_sticky_message(name: str) -> None:
     async with aiosqlite.connect(cfg.db_path) as db:
         await db.execute("DELETE FROM sticky_messages WHERE name=?", (name,))
+        await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Bot settings
+# ---------------------------------------------------------------------------
+
+async def get_setting(name: str) -> Optional[str]:
+    async with aiosqlite.connect(cfg.db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT value FROM bot_settings WHERE name=?", (name,))
+        row = await cur.fetchone()
+        return row["value"] if row is not None else None
+
+
+async def get_setting_int(name: str) -> Optional[int]:
+    value = await get_setting(name)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+async def upsert_setting(name: str, value: int | str) -> None:
+    async with aiosqlite.connect(cfg.db_path) as db:
+        await db.execute(
+            """
+            INSERT INTO bot_settings (name, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                value=excluded.value,
+                updated_at=excluded.updated_at
+            """,
+            (name, str(value), time.time()),
+        )
         await db.commit()
 
 

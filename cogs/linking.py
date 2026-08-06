@@ -420,6 +420,7 @@ class LinkingCog(commands.Cog):
             reason="reviver registration synced verification roles",
             verified=True,
         )
+        await notifications.refresh_online_revivers_list(interaction.client)
         nickname_message = f" Your nickname is now {nickname}." if nickname_synced else ""
         await interaction.followup.send(
             f"Registered {display_name} as a **{tier}** reviver (Torn ID {torn_link(identity.torn_id)}) based on revive skill.{nickname_message} Synced the reviver roles where available.",
@@ -545,6 +546,7 @@ class LinkingCog(commands.Cog):
             reason="user unregistered from storefront verification roles",
             verified=still_verified,
         )
+        await notifications.refresh_online_revivers_list(interaction.client)
         await interaction.followup.send(
             f"Removed: {', '.join(removed)}. Your roles were synced afterward.",
             ephemeral=True,

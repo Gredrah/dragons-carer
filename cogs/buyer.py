@@ -362,8 +362,9 @@ class BuyerCog(commands.Cog):
         )
         await db.open_mod_review(order_id, f"Forwarding report: {reason}")
 
-        if cfg.mod_queue_channel_id:
-            channel = interaction.client.get_channel(cfg.mod_queue_channel_id)
+        mod_queue_channel_id = await db.get_setting_int("mod_queue_channel_id")
+        if mod_queue_channel_id:
+            channel = interaction.client.get_channel(mod_queue_channel_id)
             if channel is not None:
                 embed = discord.Embed(
                     title=f"Forwarding report opened for {order_id}",
@@ -668,8 +669,9 @@ class BuyerCog(commands.Cog):
             event="review",
         )
 
-        if cfg.mod_queue_channel_id:
-            channel = interaction.client.get_channel(cfg.mod_queue_channel_id)
+        mod_queue_channel_id = await db.get_setting_int("mod_queue_channel_id")
+        if mod_queue_channel_id:
+            channel = interaction.client.get_channel(mod_queue_channel_id)
             if channel is not None:
                 embed = discord.Embed(
                     title=f"Dispute opened for {order_id}",

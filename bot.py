@@ -41,7 +41,7 @@ class ReviveBot(commands.Bot):
 
     async def setup_hook(self):
         await db.init_db()
-        for ext in ("cogs.linking", "cogs.buyer", "cogs.reviver", "cogs.moderation"):
+        for ext in ("cogs.linking", "cogs.buyer", "cogs.reviver", "cogs.moderation", "cogs.settings"):
             await self.load_extension(ext)
 
         # Re-register persistent views so buttons on old messages still work
@@ -73,14 +73,7 @@ class ReviveBot(commands.Bot):
         for review in await db.list_open_mod_reviews():
             self.add_view(ResolutionView(review["order_id"]))
 
-        if cfg.storefront_guild_id:
-            guild = discord.Object(id=cfg.storefront_guild_id)
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-        if cfg.ops_guild_id:
-            guild = discord.Object(id=cfg.ops_guild_id)
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
+        await self.tree.sync()
 
         await refresh_request_panels(self)
         await refresh_registration_panels(self)
@@ -88,6 +81,7 @@ class ReviveBot(commands.Bot):
 
         await notifications.refresh_existing_order_notifications(self)
         await refresh_queued_orders(self)
+        await notifications.refresh_online_revivers_list(self)
         await notifications.refresh_active_order_reminder(self)
         sync_linked_roles_loop.start(self)
         sync_linked_nicknames_loop.start(self)
@@ -105,7 +99,8 @@ class ReviveBot(commands.Bot):
 
         await self.process_commands(message)
 
-        if message.channel.id != cfg.reviver_ping_channel_id:
+        reviver_ping_channel_id = await db.get_setting_int("reviver_ping_channel_id")
+        if reviver_ping_channel_id is None or message.channel.id != reviver_ping_channel_id:
             return
 
         await notifications.refresh_active_order_reminder(self)
@@ -281,8 +276,9 @@ async def _handle_claimed_timeout(order: dict, now: float, bot: ReviveBot):
         event="review",
     )
     # Post to mod queue channel for visibility
-    if cfg.mod_queue_channel_id:
-        channel = bot.get_channel(cfg.mod_queue_channel_id)
+    mod_queue_channel_id = await db.get_setting_int("mod_queue_channel_id")
+    if mod_queue_channel_id:
+        channel = bot.get_channel(mod_queue_channel_id)
         if channel is not None:
             await channel.send(
                 f"Order `{order['order_id']}` opened for review: reviver claimed but never marked delivered. "
@@ -314,8 +310,9 @@ async def _handle_delivered_timeout(bot: ReviveBot, order: dict, now: float):
     await db.set_buyer_status(
         order["buyer_torn_id"], "paused", reason=f"pending review on {order['order_id']}"
     )
-    if cfg.mod_queue_channel_id:
-        channel = bot.get_channel(cfg.mod_queue_channel_id)
+    mod_queue_channel_id = await db.get_setting_int("mod_queue_channel_id")
+    if mod_queue_channel_id:
+        channel = bot.get_channel(mod_queue_channel_id)
         if channel is not None:
             await channel.send(
                 f"Order `{order['order_id']}` opened for review: payment window expired with no confirmation."

@@ -268,15 +268,16 @@ class ForwardedAssignmentView(discord.ui.View):
         self.release_forwarded.custom_id = f"forwarded_release:{order_id}"
         self.report_forwarded.custom_id = f"forwarded_report:{order_id}"
 
-    def _is_forwarding_channel(self, interaction: discord.Interaction) -> bool:
+    async def _is_forwarding_channel(self, interaction: discord.Interaction) -> bool:
+        channel_id = await db.get_setting_int("forwarding_channel_id")
         return bool(
-            cfg.forwarding_channel_id
+            channel_id
             and interaction.channel is not None
-            and getattr(interaction.channel, "id", None) == cfg.forwarding_channel_id
+            and getattr(interaction.channel, "id", None) == channel_id
         )
 
     async def _require_forwarding_channel(self, interaction: discord.Interaction) -> bool:
-        if not self._is_forwarding_channel(interaction):
+        if not await self._is_forwarding_channel(interaction):
             await interaction.response.send_message(FORWARDING_ONLY_BUTTON_MESSAGE, ephemeral=True)
             return False
         return True
@@ -766,6 +767,7 @@ class ReviverStatusPanelView(discord.ui.View):
             return
 
         await db.set_reviver_status(reviver["torn_id"], status)
+        await notifications.refresh_online_revivers_list(interaction.client)
         message = f"You're now marked **{status}**."
         if status == "online":
             reassigned_count = await refresh_queued_orders(interaction.client)
@@ -845,6 +847,7 @@ class ReviverCog(commands.Cog):
             )
             return
         await db.set_reviver_status(reviver["torn_id"], status.value)
+        await notifications.refresh_online_revivers_list(interaction.client)
         message = f"You're now marked **{status.value}**."
         if status.value == "online":
             reassigned_count = await refresh_queued_orders(interaction.client)

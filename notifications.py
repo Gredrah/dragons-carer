@@ -20,6 +20,7 @@ from state import OrderState
 
 logger = logging.getLogger(__name__)
 ACTIVE_ORDER_REMINDER_NAME = "active_order_reminder"
+ONLINE_REVIVERS_LIST_NAME = "online_revivers_list"
 HARD_TERMINAL_ORDER_STATES = {
     OrderState.CLOSED.value,
     OrderState.CLOSED_NO_ACTION.value,
@@ -35,7 +36,7 @@ def _apply_forwarding_footer(embed: discord.Embed) -> discord.Embed:
 
 async def _send_ops_alert(bot: discord.Client, message: str) -> None:
     """Best-effort alert to the ops channel without recursing through the notification helpers."""
-    channel_id = cfg.ops_channel_id
+    channel_id = await db.get_setting_int("ops_channel_id")
     if not channel_id:
         return
 
@@ -337,13 +338,14 @@ async def build_user_profile_embed(bot: discord.Client, user_id: int | str, *, t
 
 async def refresh_forwarding_order_message(bot: discord.Client, order_id: str, *, event: str) -> bool:
     order = await db.get_order(order_id)
-    if order is None or not cfg.forwarding_channel_id:
+    channel_id = await db.get_setting_int("forwarding_channel_id")
+    if order is None or not channel_id:
         return False
 
-    channel = bot.get_channel(cfg.forwarding_channel_id)
+    channel = bot.get_channel(channel_id)
     if channel is None:
         try:
-            channel = await bot.fetch_channel(cfg.forwarding_channel_id)
+            channel = await bot.fetch_channel(channel_id)
         except (discord.NotFound, discord.HTTPException):
             return False
 
@@ -372,13 +374,13 @@ async def refresh_forwarding_order_message(bot: discord.Client, order_id: str, *
 
     record = await db.get_forwarding_order_message(order_id)
     message = None
-    if record is not None and int(record["channel_id"]) == getattr(channel, "id", cfg.forwarding_channel_id):
+    if record is not None and int(record["channel_id"]) == getattr(channel, "id", channel_id):
         message = await _fetch_message(channel, int(record["message_id"]))
 
     if message is not None:
         try:
             await message.edit(content=content, embed=embed, view=view)
-            await db.upsert_forwarding_order_message(order_id, int(getattr(channel, "id", cfg.forwarding_channel_id)), message.id)
+            await db.upsert_forwarding_order_message(order_id, int(getattr(channel, "id", channel_id)), message.id)
             return True
         except (discord.Forbidden, discord.HTTPException):
             message = None
@@ -388,7 +390,7 @@ async def refresh_forwarding_order_message(bot: discord.Client, order_id: str, *
     except (discord.Forbidden, discord.HTTPException):
         return False
 
-    await db.upsert_forwarding_order_message(order_id, int(getattr(channel, "id", cfg.forwarding_channel_id)), new_message.id)
+    await db.upsert_forwarding_order_message(order_id, int(getattr(channel, "id", channel_id)), new_message.id)
     return True
 
 
@@ -400,6 +402,10 @@ async def refresh_reviver_order_channel_log(
 ) -> bool:
     order = await db.get_order(order_id)
     if order is None:
+        return False
+
+    channel_id = await db.get_setting_int("reviver_ping_channel_id")
+    if not channel_id:
         return False
 
     assigned_reviver_discord_id: str | None = None
@@ -425,10 +431,10 @@ async def refresh_reviver_order_channel_log(
         await _delete_forwarding_order_message_record(order_id)
         return True
 
-    channel = bot.get_channel(cfg.reviver_ping_channel_id)
+    channel = bot.get_channel(channel_id)
     if channel is None:
         try:
-            channel = await bot.fetch_channel(cfg.reviver_ping_channel_id)
+            channel = await bot.fetch_channel(channel_id)
         except (discord.NotFound, discord.HTTPException):
             return False
 
@@ -438,13 +444,13 @@ async def refresh_reviver_order_channel_log(
     embed = _build_channel_log_embed(order, event, assigned_reviver_discord_id)
     record = await db.get_reviver_order_channel_message(order_id)
     message = None
-    if record is not None and int(record["channel_id"]) == getattr(channel, "id", cfg.reviver_ping_channel_id):
+    if record is not None and int(record["channel_id"]) == getattr(channel, "id", channel_id):
         message = await _fetch_message(channel, int(record["message_id"]))
 
     if message is not None:
         try:
             await message.edit(embed=embed)
-            await db.upsert_reviver_order_channel_message(order_id, int(getattr(channel, "id", cfg.reviver_ping_channel_id)), message.id)
+            await db.upsert_reviver_order_channel_message(order_id, int(getattr(channel, "id", channel_id)), message.id)
             forwarding_success = await refresh_forwarding_order_message(bot, order_id, event=event)
             return forwarding_success or True
         except (discord.Forbidden, discord.HTTPException):
@@ -455,7 +461,7 @@ async def refresh_reviver_order_channel_log(
     except (discord.Forbidden, discord.HTTPException):
         return False
 
-    await db.upsert_reviver_order_channel_message(order_id, int(getattr(channel, "id", cfg.reviver_ping_channel_id)), new_message.id)
+    await db.upsert_reviver_order_channel_message(order_id, int(getattr(channel, "id", channel_id)), new_message.id)
     return await refresh_forwarding_order_message(bot, order_id, event=event)
 
 
@@ -520,20 +526,56 @@ def build_active_order_reminder_content(orders: Iterable[dict]) -> str:
     header = "Active revive orders reminder:\n"
     if not order_lines:
         return header + "No active revive orders right now."
+    return _render_limited_lines(header, order_lines, "No active revive orders right now.")
+
+
+def _render_limited_lines(header: str, lines: list[str], empty_message: str) -> str:
+    if not lines:
+        return header + empty_message
 
     rendered_lines: list[str] = []
-    for index, line in enumerate(order_lines):
+    for index, line in enumerate(lines):
         candidate = header + "\n".join(rendered_lines + [line])
         if len(candidate) > cfg.discord_message_soft_limit:
-            remaining = len(order_lines) - index
+            remaining = len(lines) - index
             if remaining > 0:
-                truncated_line = f"... and {remaining} more active order(s)."
+                truncated_line = f"... and {remaining} more line(s)."
                 if len(header + "\n".join(rendered_lines + [truncated_line])) <= cfg.discord_message_soft_limit:
                     rendered_lines.append(truncated_line)
             break
         rendered_lines.append(line)
 
     return header + "\n".join(rendered_lines)
+
+
+def _tier_display_name(tier: str) -> str:
+    normalized = str(tier).strip().lower()
+    if normalized == "100":
+        return "100+"
+    if normalized == "75":
+        return "75+"
+    return "Standard"
+
+
+def build_online_revivers_content(revivers: Iterable[dict]) -> str:
+    online_revivers = [
+        reviver
+        for reviver in revivers
+        if str(reviver["status"]).strip().lower() == "online"
+    ]
+    order_lines: list[str] = []
+    for tier in ("100", "75", "standard"):
+        tier_revivers = sorted(
+            [reviver for reviver in online_revivers if str(reviver["tier"]).strip().lower() == tier],
+            key=lambda row: (int(row["torn_id"]), str(row["discord_id"])),
+        )
+        if not tier_revivers:
+            continue
+
+        order_lines.append(f"{_tier_display_name(tier)}:")
+        order_lines.extend(f"- <@{reviver['discord_id']}> | {torn_link(reviver['torn_id'])}" for reviver in tier_revivers)
+
+    return _render_limited_lines("Currently online revivers:\n", order_lines, "No revivers are online right now.")
 
 
 def build_reviver_order_dm_content(
@@ -772,7 +814,8 @@ async def _maintain_sticky_message(
 
 
 async def refresh_active_order_reminder(bot: discord.Client) -> bool:
-    if not cfg.reviver_ping_channel_id:
+    channel_id = await db.get_setting_int("reviver_ping_channel_id")
+    if not channel_id:
         return False
 
     active_orders: list[dict] = []
@@ -787,7 +830,22 @@ async def refresh_active_order_reminder(bot: discord.Client) -> bool:
     return await _maintain_sticky_message(
         bot,
         name=ACTIVE_ORDER_REMINDER_NAME,
-        channel_id=cfg.reviver_ping_channel_id,
+        channel_id=channel_id,
+        content=content,
+    )
+
+
+async def refresh_online_revivers_list(bot: discord.Client) -> bool:
+    channel_id = await db.get_setting_int("buyer_channel_id")
+    if not channel_id:
+        return False
+
+    revivers = await db.list_revivers()
+    content = build_online_revivers_content(revivers)
+    return await _maintain_sticky_message(
+        bot,
+        name=ONLINE_REVIVERS_LIST_NAME,
+        channel_id=channel_id,
         content=content,
     )
 
@@ -861,7 +919,7 @@ async def send_reviver_ping(
     if await send_dm(bot, reviver_user_id, content, view=view, embed=embed):
         return True
 
-    channel_id = fallback_channel_id if fallback_channel_id is not None else cfg.reviver_ping_channel_id
+    channel_id = fallback_channel_id if fallback_channel_id is not None else await db.get_setting_int("reviver_ping_channel_id")
     if channel_id:
         return await send_channel_message(bot, channel_id, content, view=view, embed=embed)
 
@@ -886,7 +944,7 @@ async def send_no_reviver_available_notice(
     *_,
 ) -> bool:
     """Broadcast that an order is open even though no reviver was available."""
-    channel_id = cfg.reviver_ping_channel_id
+    channel_id = await db.get_setting_int("reviver_ping_channel_id")
     if not channel_id:
         await _report_notification_failure(
             bot,
@@ -903,7 +961,7 @@ async def send_no_reviver_available_notice(
 
 async def send_mod_issue_report(bot: discord.Client, content: str) -> bool:
     """Send a reviver issue report to the mod queue, with ops fallback."""
-    channel_id = cfg.mod_queue_channel_id or cfg.ops_channel_id
+    channel_id = await db.get_setting_int("mod_queue_channel_id") or await db.get_setting_int("ops_channel_id")
     if not channel_id:
         return False
     return await send_channel_message(bot, channel_id, content)
@@ -914,13 +972,14 @@ async def send_active_order_reminder(
     orders: Iterable[dict],
 ) -> bool:
     """Maintain the reminder about currently active orders at the bottom of the revive channel."""
-    if not cfg.reviver_ping_channel_id:
+    channel_id = await db.get_setting_int("reviver_ping_channel_id")
+    if not channel_id:
         return False
     content = build_active_order_reminder_content(orders)
     return await _maintain_sticky_message(
         bot,
         name=ACTIVE_ORDER_REMINDER_NAME,
-        channel_id=cfg.reviver_ping_channel_id,
+        channel_id=channel_id,
         content=content,
     )
 
@@ -932,11 +991,12 @@ async def send_order_ops_notice(
     target_torn_id: int,
 ) -> bool:
     """Tell the seller-facing revive channel that an active order changed operational state."""
-    if not cfg.ops_channel_id:
+    channel_id = await db.get_setting_int("ops_channel_id")
+    if not channel_id:
         return False
     return await send_channel_message(
         bot,
-        cfg.ops_channel_id,
+        channel_id,
         f"Order `{order_id}` ops update: target {torn_link(target_torn_id)} left hospital before the revive was completed. "
         f"Buyer {torn_link(buyer_torn_id)} was notified.",
     )
@@ -952,9 +1012,10 @@ async def send_order_canceled_notice(
     message = (
         f"Order `{order_id}` was canceled by buyer {torn_link(buyer_torn_id)} for target {torn_link(target_torn_id)}."
     )
-    if not cfg.reviver_ping_channel_id:
+    channel_id = await db.get_setting_int("reviver_ping_channel_id")
+    if not channel_id:
         return False
-    return await send_channel_message(bot, cfg.reviver_ping_channel_id, message)
+    return await send_channel_message(bot, channel_id, message)
 
 
 async def send_payment_instructions(
