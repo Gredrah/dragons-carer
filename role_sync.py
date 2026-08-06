@@ -179,8 +179,14 @@ async def _sync_member_nickname(
 
     try:
         await member.edit(nick=desired_nick, reason=reason)
-    except (discord.Forbidden, discord.HTTPException):
-        LOGGER.warning("Failed to sync nickname for %s in %s", member.id, member.guild.id)
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        LOGGER.warning(
+            "Failed to sync nickname for %s in %s to %r: %s",
+            member.id,
+            member.guild.id,
+            desired_nick,
+            exc,
+        )
         return False
 
     return True
@@ -293,8 +299,13 @@ async def sync_member_verification(bot: commands.Bot, discord_id: str, *, reason
                 await member.add_roles(*to_add, reason=reason)
             if to_remove:
                 await member.remove_roles(*to_remove, reason=reason)
-        except (discord.Forbidden, discord.HTTPException):
-            LOGGER.warning("Failed to sync verification roles for %s in %s", member.id, member.guild.id)
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            LOGGER.warning(
+                "Failed to sync verification roles for %s in %s: %s",
+                member.id,
+                member.guild.id,
+                exc,
+            )
 
 
 
