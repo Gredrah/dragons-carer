@@ -31,6 +31,10 @@ def _managed_guild_ids() -> tuple[int, ...]:
     return tuple(guild_ids)
 
 
+def _nickname_guild_ids() -> tuple[int, ...]:
+    return (cfg.storefront_guild_id,) if cfg.storefront_guild_id else ()
+
+
 def format_torn_nickname(torn_name: str, torn_id: int, *, max_length: int = 32) -> str:
     suffix = NICKNAME_SUFFIX_TEMPLATE.format(torn_id=torn_id)
     cleaned_name = " ".join(str(torn_name).split()).strip()
@@ -188,11 +192,14 @@ async def _sync_member_nickname(
             )
         if blockers:
             LOGGER.warning(
-                "Failed to sync nickname for %s in %s to %r: %s",
+                "Failed to sync nickname for %s in %s to %r: %s (bot top role=%s, target top role=%s, target roles=%s)",
                 member.id,
                 member.guild.id,
                 desired_nick,
                 "; ".join(blockers),
+                bot_member.top_role,
+                member.top_role,
+                ", ".join(role.name for role in member.roles),
             )
             return False
 
@@ -200,11 +207,14 @@ async def _sync_member_nickname(
         await member.edit(nick=desired_nick, reason=reason)
     except (discord.Forbidden, discord.HTTPException) as exc:
         LOGGER.warning(
-            "Failed to sync nickname for %s in %s to %r: %s",
+            "Failed to sync nickname for %s in %s to %r: %s (bot top role=%s, target top role=%s, target roles=%s)",
             member.id,
             member.guild.id,
             desired_nick,
             exc,
+            bot_member.top_role if bot_member is not None else None,
+            member.top_role,
+            ", ".join(role.name for role in member.roles),
         )
         return False
 
@@ -345,7 +355,7 @@ async def sync_member_nickname(
         return False
 
     changed = False
-    for guild_id in _managed_guild_ids():
+    for guild_id in _nickname_guild_ids():
         guild = bot.get_guild(guild_id)
         if guild is None:
             continue
