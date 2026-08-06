@@ -6,6 +6,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import db
+from config import cfg
 from role_sync import format_torn_nickname, sync_member_nickname, sync_member_roles, sync_member_verification
 import torn_api
 from formatting import torn_link
@@ -26,6 +27,37 @@ def _parse_tier(value: str) -> str:
     if normalized in {"100", "100+", "t100"}:
         return Tier.T100.value
     raise ValueError("tier must be one of: standard, 75, 100")
+
+
+def _normalize_faction_name(value: str | None) -> str:
+    return " ".join(str(value or "").split()).strip().casefold()
+
+
+def _format_faction_requirement_label(required_faction_id: int, required_faction_name: str) -> str:
+    normalized_name = required_faction_name.strip()
+    if normalized_name and required_faction_id:
+        return f"{normalized_name} (Torn faction ID {required_faction_id})"
+    if normalized_name:
+        return normalized_name
+    if required_faction_id:
+        return f"Torn faction ID {required_faction_id}"
+    return "the configured Torn faction"
+
+
+def _identity_matches_required_faction(
+    identity_faction_id: int | None,
+    identity_faction_name: str | None,
+    required_faction_id: int,
+    required_faction_name: str,
+) -> bool:
+    if required_faction_id and identity_faction_id == required_faction_id:
+        return True
+
+    required_name = _normalize_faction_name(required_faction_name)
+    if required_name and _normalize_faction_name(identity_faction_name) == required_name:
+        return True
+
+    return False
 
 
 def build_buyer_registration_panel_embed() -> discord.Embed:
@@ -66,6 +98,16 @@ def build_reviver_registration_panel_embed() -> discord.Embed:
         ),
         inline=False,
     )
+    if cfg.reviver_registration_faction_match_enabled:
+        embed.add_field(
+            name="Faction requirement",
+            value=(
+                "Only members of "
+                f"{_format_faction_requirement_label(cfg.reviver_registration_faction_id, cfg.reviver_registration_faction_name)} "
+                "can register as seller / medic."
+            ),
+            inline=False,
+        )
     embed.set_footer(text="reviver_registration_panel")
     return embed
 
@@ -255,6 +297,25 @@ class LinkingCog(commands.Cog):
             return
         except Exception:
             await interaction.followup.send(TORN_API_UNAVAILABLE_MESSAGE, ephemeral=True)
+            return
+
+        if cfg.reviver_registration_faction_match_enabled and not _identity_matches_required_faction(
+            identity.faction_id,
+            identity.faction_name,
+            cfg.reviver_registration_faction_id,
+            cfg.reviver_registration_faction_name,
+        ):
+            requirement = _format_faction_requirement_label(
+                cfg.reviver_registration_faction_id,
+                cfg.reviver_registration_faction_name,
+            )
+            current_faction = identity.faction_name or "no faction"
+            if identity.faction_id is not None:
+                current_faction = f"{current_faction} (Torn faction ID {identity.faction_id})"
+            await interaction.followup.send(
+                f"This seller / medic registration panel is restricted to {requirement}. Your Torn account is currently tied to {current_faction}, so registration was denied.",
+                ephemeral=True,
+            )
             return
 
         async with aiohttp.ClientSession() as session:

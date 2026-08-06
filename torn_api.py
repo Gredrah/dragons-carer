@@ -33,6 +33,8 @@ class TornAPIError(Exception):
 class TornIdentity:
     torn_id: int
     name: str
+    faction_id: Optional[int] = None
+    faction_name: Optional[str] = None
 
 
 async def _get(session: aiohttp.ClientSession, path: str, params: dict[str, Any]) -> dict:
@@ -74,7 +76,28 @@ async def verify_key_and_get_identity(session: aiohttp.ClientSession, api_key: s
         raise TornAPIError(0, "Could not determine player ID from key response — check response shape.")
     if not candidate_name:
         raise TornAPIError(0, "Could not determine player name from key response — check response shape.")
-    return TornIdentity(torn_id=int(candidate_id), name=str(candidate_name).strip())
+
+    faction_data = data.get("faction") or profile.get("faction") or {}
+    if not isinstance(faction_data, dict):
+        faction_data = {}
+
+    candidate_faction_id = (
+        faction_data.get("id")
+        or faction_data.get("faction_id")
+        or faction_data.get("factionId")
+    )
+    candidate_faction_name = (
+        faction_data.get("name")
+        or faction_data.get("faction_name")
+        or faction_data.get("factionName")
+    )
+
+    return TornIdentity(
+        torn_id=int(candidate_id),
+        name=str(candidate_name).strip(),
+        faction_id=int(candidate_faction_id) if candidate_faction_id is not None else None,
+        faction_name=str(candidate_faction_name).strip() if candidate_faction_name else None,
+    )
 
 
 @dataclass

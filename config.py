@@ -19,6 +19,13 @@ def _float(name: str, default: float) -> float:
     return float(val) if val else default
 
 
+def _bool(name: str, default: bool) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Config:
     discord_token: str = os.getenv("DISCORD_TOKEN", "")
@@ -37,6 +44,12 @@ class Config:
     standard_revive_price: str = os.getenv("STANDARD_REVIVE_PRICE", "")
     t75_revive_price: str = os.getenv("T75_REVIVE_PRICE", "")
     t100_revive_price: str = os.getenv("T100_REVIVE_PRICE", "")
+    reviver_registration_faction_match_enabled: bool = _bool(
+        "REVIVER_REGISTRATION_FACTION_MATCH_ENABLED",
+        False,
+    )
+    reviver_registration_faction_id: int = _int("REVIVER_REGISTRATION_FACTION_ID", 0)
+    reviver_registration_faction_name: str = os.getenv("REVIVER_REGISTRATION_FACTION_NAME", "")
 
     claim_timeout_seconds: int = _int("CLAIM_TIMEOUT_SECONDS", 300)
     delivery_timeout_seconds: int = _int("DELIVERY_TIMEOUT_SECONDS", 900)

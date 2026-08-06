@@ -132,6 +132,9 @@ The most important values are listed below. See `.env.example` for the complete 
 - `DB_ENCRYPTION_KEY` - Fernet key for encrypting stored Torn API keys
 - `DB_PATH` - SQLite database path
 - `STANDARD_REVIVE_PRICE`, `T75_REVIVE_PRICE`, `T100_REVIVE_PRICE` - values shown in the revive request panel
+- `REVIVER_REGISTRATION_FACTION_MATCH_ENABLED` - set to `true` to restrict seller / medic registration to one Torn faction
+- `REVIVER_REGISTRATION_FACTION_ID` - Torn faction ID used for the registration restriction
+- `REVIVER_REGISTRATION_FACTION_NAME` - Torn faction name shown in the registration panel and used as a fallback match
 
 Other settings control timeouts, poll intervals, UI limits, and assignment balancing. The defaults are tuned for a small storefront and can be adjusted in `.env`.
 
