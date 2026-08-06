@@ -129,12 +129,14 @@ class ReviveRequestModal(discord.ui.Modal, title="Request a Revive"):
         self.tier = discord.ui.TextInput(
             label="Tier",
             placeholder="standard, 75, or 100",
+            default="standard",
             required=True,
             max_length=20,
         )
         self.revives_requested = discord.ui.TextInput(
             label="Revives requested",
             placeholder="1",
+            default="1",
             required=True,
             max_length=4,
         )
@@ -433,7 +435,7 @@ class BuyerCog(commands.Cog):
     @app_commands.command(name="request", description="Request a revive from the storefront.")
     @app_commands.checks.has_any_role(*BUYER_ACCESS_ROLE_NAMES)
     @app_commands.describe(
-        tier="Reviver tier required",
+        tier="Reviver tier (defaults to standard)",
         target_id="Torn ID of the player who needs reviving (defaults to self)",
         revives_requested="How many revives are being requested?",
     )
@@ -447,13 +449,13 @@ class BuyerCog(commands.Cog):
     async def request(
         self,
         interaction: discord.Interaction,
-        tier: app_commands.Choice[str],
+        tier: str = Tier.STANDARD.value,
         target_id: int | None = None,
         revives_requested: int = 1,
     ):
         await self._submit_request(
             interaction,
-            tier_value=tier.value,
+            tier_value=tier,
             target_value=str(target_id) if target_id is not None else None,
             revives_requested_value=str(revives_requested),
         )
