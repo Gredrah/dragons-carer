@@ -6,7 +6,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import db
-from role_sync import format_torn_nickname, sync_member_nickname, sync_member_roles
+from role_sync import format_torn_nickname, sync_member_nickname, sync_member_roles, sync_member_verification
 import torn_api
 from formatting import torn_link
 from state import Tier, tier_from_skill
@@ -215,6 +215,12 @@ class LinkingCog(commands.Cog):
             str(interaction.user.id),
             reason="buyer registration synced roles",
         )
+        await sync_member_verification(
+            interaction.client,
+            str(interaction.user.id),
+            reason="buyer registration synced verification roles",
+            verified=True,
+        )
         nickname_message = f" Your nickname is now {nickname}." if nickname_synced else ""
         await interaction.followup.send(
             f"Linked. Your Discord account is now tied to Torn ID {torn_link(identity.torn_id)} as a buyer.{nickname_message} The @buyer role has been synced where available.",
@@ -279,6 +285,12 @@ class LinkingCog(commands.Cog):
             interaction.client,
             discord_id,
             reason="reviver registration synced roles",
+        )
+        await sync_member_verification(
+            interaction.client,
+            discord_id,
+            reason="reviver registration synced verification roles",
+            verified=True,
         )
         nickname_message = f" Your nickname is now {nickname}." if nickname_synced else ""
         await interaction.followup.send(
@@ -389,10 +401,21 @@ class LinkingCog(commands.Cog):
             )
             return
 
+        still_verified = (
+            await db.get_buyer_by_discord(user_id) is not None
+            or await db.get_reviver_by_discord(user_id) is not None
+        )
+
         await sync_member_roles(
             interaction.client,
             user_id,
             reason="user unregistered from storefront roles",
+        )
+        await sync_member_verification(
+            interaction.client,
+            user_id,
+            reason="user unregistered from storefront verification roles",
+            verified=still_verified,
         )
         await interaction.followup.send(
             f"Removed: {', '.join(removed)}. Your roles were synced afterward.",

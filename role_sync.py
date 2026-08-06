@@ -14,7 +14,11 @@ import torn_api
 
 
 LOGGER = logging.getLogger(__name__)
-MANAGED_ROLE_NAMES = tuple(dict.fromkeys(BUYER_ROLE_NAMES + REVIVER_ROLE_NAMES))
+VERIFIED_ROLE_NAMES = ("verified",)
+UNVERIFIED_ROLE_NAMES = ("un-verified",)
+MANAGED_ROLE_NAMES = tuple(
+    dict.fromkeys(BUYER_ROLE_NAMES + REVIVER_ROLE_NAMES + VERIFIED_ROLE_NAMES + UNVERIFIED_ROLE_NAMES)
+)
 NICKNAME_SUFFIX_TEMPLATE = " [{torn_id}]"
 
 
@@ -62,6 +66,12 @@ def _desired_role_names(has_buyer: bool, has_reviver: bool) -> set[str]:
     if has_reviver:
         desired.add("reviver")
     return desired
+
+
+def _verification_role_names(is_verified: bool) -> set[str]:
+    if is_verified:
+        return {name.lower() for name in VERIFIED_ROLE_NAMES}
+    return {name.lower() for name in UNVERIFIED_ROLE_NAMES}
 
 
 def _reviver_tier_role_names_for_skill(skill_level: float | None) -> set[str]:
@@ -181,9 +191,11 @@ async def _sync_member_truth(
     *,
     has_buyer: bool,
     has_reviver: bool,
+    is_verified: bool,
     reason: str,
 ) -> bool:
     desired_role_names = _desired_role_names(has_buyer, has_reviver)
+    desired_role_names.update(_verification_role_names(is_verified))
     if has_reviver:
         reviver_row = await db.get_reviver_by_discord(str(member.id))
         skill_level = None
@@ -234,6 +246,7 @@ async def sync_member_roles(bot: commands.Bot, discord_id: str, *, reason: str) 
     reviver = await db.get_reviver_by_discord(discord_id)
     has_buyer = buyer is not None
     has_reviver = reviver is not None
+    is_verified = has_buyer or has_reviver
 
     for guild_id in _managed_guild_ids():
         guild = bot.get_guild(guild_id)
@@ -246,8 +259,43 @@ async def sync_member_roles(bot: commands.Bot, discord_id: str, *, reason: str) 
             member,
             has_buyer=has_buyer,
             has_reviver=has_reviver,
+            is_verified=is_verified,
             reason=reason,
         )
+
+
+async def sync_member_verification(bot: commands.Bot, discord_id: str, *, reason: str, verified: bool) -> None:
+    for guild_id in _managed_guild_ids():
+        guild = bot.get_guild(guild_id)
+        if guild is None:
+            continue
+
+        member = await _resolve_member(guild, discord_id)
+        if member is None:
+            continue
+
+        desired_role_names = _verification_role_names(verified)
+        managed_roles = [role for role in member.roles if role.name.lower() in {name.lower() for name in VERIFIED_ROLE_NAMES + UNVERIFIED_ROLE_NAMES}]
+        desired_roles = []
+        for role_name in desired_role_names:
+            role = await _ensure_role(member.guild, role_name)
+            if role is not None:
+                desired_roles.append(role)
+
+        to_add = [role for role in desired_roles if role not in member.roles]
+        to_remove = [role for role in managed_roles if role.name.lower() not in desired_role_names]
+
+        if not to_add and not to_remove:
+            continue
+
+        try:
+            if to_add:
+                await member.add_roles(*to_add, reason=reason)
+            if to_remove:
+                await member.remove_roles(*to_remove, reason=reason)
+        except (discord.Forbidden, discord.HTTPException):
+            LOGGER.warning("Failed to sync verification roles for %s in %s", member.id, member.guild.id)
+
 
 
 async def sync_member_nickname(
