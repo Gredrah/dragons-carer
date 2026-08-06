@@ -44,10 +44,18 @@ DESTINATION_LABELS = {
 }
 
 
+def _set_destination_guild_scope():
+    if not cfg.command_sync_guild_id:
+        return lambda command: command
+
+    return app_commands.guilds(discord.Object(id=cfg.command_sync_guild_id))
+
+
 class SettingsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
+    @_set_destination_guild_scope()
     @app_commands.command(name="set_destination", description="Bind a bot destination to this guild or channel ID.")
     @app_commands.default_permissions(administrator=True)
     @app_commands.checks.has_permissions(administrator=True)
@@ -126,10 +134,6 @@ class SettingsCog(commands.Cog):
                 "Admin permissions are required to change bot destinations.",
                 ephemeral=True,
             )
-
-
-if cfg.command_sync_guild_id:
-    SettingsCog = app_commands.guilds(discord.Object(id=cfg.command_sync_guild_id))(SettingsCog)
 
 
 async def setup(bot: commands.Bot):
