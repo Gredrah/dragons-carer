@@ -536,7 +536,12 @@ def build_active_order_reminder_content(orders: Iterable[dict]) -> str:
     return header + "\n".join(rendered_lines)
 
 
-def build_reviver_order_dm_content(order: dict, recipient_discord_id: str, current_assignee_discord_id: str | None) -> str:
+def build_reviver_order_dm_content(
+    order: dict,
+    recipient_discord_id: str,
+    current_assignee_discord_id: str | None,
+    assignment_notice: str | None = None,
+) -> str:
     recipient_discord_id = str(recipient_discord_id)
     current_assignee_discord_id = str(current_assignee_discord_id) if current_assignee_discord_id is not None else None
     is_current_assignee = current_assignee_discord_id is not None and recipient_discord_id == current_assignee_discord_id
@@ -546,6 +551,9 @@ def build_reviver_order_dm_content(order: dict, recipient_discord_id: str, curre
         f"Order `{order['order_id']}`",
         f"Target {torn_link(order['target_torn_id'])} | tier `{order['tier_requested']}` | revives `{order['revives_requested']}`",
     ]
+
+    if assignment_notice:
+        lines.append(assignment_notice)
 
     if state == OrderState.ASSIGNED.value:
         if is_current_assignee:
@@ -594,6 +602,24 @@ def build_reviver_order_dm_content(order: dict, recipient_discord_id: str, curre
         lines.append(f"Status: {state}.")
 
     return "\n".join(lines)
+
+
+async def _build_assignment_notice(order: dict) -> str | None:
+    import assignment
+
+    chance = await assignment.get_target_revive_chance(order["target_torn_id"])
+    if chance is None:
+        return None
+    if chance < cfg.warning_reviver_threshold:
+        return (
+            f"Warning: this target is estimated at {chance:.1f}% revive chance. "
+            "Failures must be personally negotiated or the fee waived before you accept."
+        )
+    if chance < cfg.low_priority_reviver_threshold:
+        return (
+            f"Notice: this target is estimated at {chance:.1f}% revive chance, so this order is in the secondary non-priority pool."
+        )
+    return None
 
 
 def _order_view_for_state(order: dict, recipient_discord_id: str, current_assignee_discord_id: str | None) -> discord.ui.View | None:
@@ -651,7 +677,13 @@ async def refresh_reviver_order_dm(
     if order["state"] in HARD_TERMINAL_ORDER_STATES:
         return await _delete_reviver_order_dm(bot, order_id, recipient_discord_id)
 
-    content = build_reviver_order_dm_content(order, recipient_discord_id, current_assignee_discord_id)
+    assignment_notice = await _build_assignment_notice(order)
+    content = build_reviver_order_dm_content(
+        order,
+        recipient_discord_id,
+        current_assignee_discord_id,
+        assignment_notice=assignment_notice,
+    )
     resolved_view = view
     if resolved_view is None:
         resolved_view = _order_view_for_state(order, recipient_discord_id, current_assignee_discord_id)

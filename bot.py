@@ -191,13 +191,16 @@ async def _handle_assigned_timeout(order: dict, now: float, bot: ReviveBot | Non
     tried = set(json.loads(order["reviver_attempt_history"]))
     tried.add(order["assigned_reviver_id"])
     previous_reviver = await db.get_reviver(order["assigned_reviver_id"])
-    next_reviver = await assignment.pick_reviver(order["tier_requested"], exclude_ids=tried)
+    next_reviver, reset_history = await assignment.pick_reviver_with_retry(
+        order["tier_requested"],
+        exclude_ids=tried,
+    )
     if next_reviver:
         await db.update_order(
             order["order_id"],
             assigned_reviver_id=next_reviver["torn_id"],
             assigned_at=time.time(),
-            reviver_attempt_history=json.dumps(list(tried)),
+            reviver_attempt_history=json.dumps([] if reset_history else list(tried)),
         )
         await db.record_reviver_assignment(next_reviver["torn_id"])
         # state stays ASSIGNED; timestamp reset via update_order's updated_at bump

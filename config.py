@@ -71,6 +71,8 @@ class Config:
     assignment_drought_bonus_per_day: float = _float("ASSIGNMENT_DROUGHT_BONUS_PER_DAY", 1.0)
     assignment_drought_bonus_cap: float = _float("ASSIGNMENT_DROUGHT_BONUS_CAP", 3.0)
     assignment_fairness_window_days: int = _int("ASSIGNMENT_FAIRNESS_WINDOW_DAYS", 7)
+    low_priority_reviver_threshold: float = _float("LOW_PRIORITY_REVIVER_THRESHOLD", 65.0)
+    warning_reviver_threshold: float = _float("WARNING_REVIVER_THRESHOLD", 50.0)
 
     debug_outgoing_revive_bypass_torn_id: int = _int("DEBUG_OUTGOING_REVIVE_BYPASS_TORN_ID", 0)
 

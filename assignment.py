@@ -2,22 +2,21 @@
 Assignment logic.
 
 Priority order (per design): tier match first, drought/fairness weighting
-second.
+second. Target revive chance is used separately to classify low-priority
+orders and to warn revivers before they accept risky assignments.
 - A request for tier T is only ever given to a reviver at tier T, or -- if
   none are online -- the next tier(s) up (a 100-skill reviver can cover a 75
   or standard request; a standard reviver should never be handed a 75/100
   request). Assignment never falls to a *lower* tier than requested.
 - Within whichever single tier level actually has an available candidate,
-  revivers are ranked by a weighted score: fewer completed orders in the
-  trailing window is better (fair split), with a bonus that grows the longer
-  a reviver has gone without an assignment (drought), so a reviver who's been
-  online a long time without work isn't perpetually passed over by someone
-  who happens to have a slightly lower raw completed-count.
+    revivers are ranked by completed orders in the trailing window (fair split)
+    and then by a bonus that grows the longer a reviver has gone without an
+    assignment (drought).
 """
 from __future__ import annotations
 
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import db
 from config import cfg
@@ -46,7 +45,35 @@ async def _weighted_score(row, now: float) -> float:
     return completed - bonus
 
 
-async def pick_reviver(tier: str, exclude_ids: set[int] | None = None) -> Optional[dict]:
+def _new_client_session() -> Any:
+    import aiohttp
+
+    return aiohttp.ClientSession()
+
+
+async def get_target_revive_chance(target_torn_id: int | None) -> float | None:
+    if target_torn_id is None:
+        return None
+
+    api_key = await db.get_api_key_for_torn_id(target_torn_id)
+    if not api_key:
+        return None
+
+    try:
+        import torn_api
+
+        async with _new_client_session() as session:
+            return await torn_api.get_target_revive_score(session, api_key)
+    except Exception:
+        # Chance is informational only; if the API lookup fails, leave the
+        # target unclassified rather than blocking assignment.
+        return None
+
+
+async def pick_reviver(
+    tier: str,
+    exclude_ids: set[int] | None = None,
+) -> Optional[dict]:
     """
     Returns the row (as a dict) of the best reviver to assign next, or None
     if nobody eligible is online. `exclude_ids` lets the caller skip
@@ -73,11 +100,33 @@ async def pick_reviver(tier: str, exclude_ids: set[int] | None = None) -> Option
     return None
 
 
-async def _best_of(candidates: list, now: float | None = None) -> dict:
+async def pick_reviver_with_retry(
+    tier: str,
+    exclude_ids: set[int] | None = None,
+) -> tuple[Optional[dict], bool]:
+    """Pick the next reviver, then retry once with a fresh pool if the current
+    exclusion list exhausts the active queue.
+
+    Returns the selected reviver and a flag indicating whether the caller
+    should reset the order's attempt history for a new cycle.
+    """
+    excluded = exclude_ids or set()
+    chosen = await pick_reviver(tier, exclude_ids=excluded)
+    if chosen is not None or not excluded:
+        return chosen, False
+
+    retry_choice = await pick_reviver(tier, exclude_ids=set())
+    return retry_choice, retry_choice is not None
+
+
+async def _best_of(
+    candidates: list,
+    now: float | None = None,
+) -> dict:
     now = now if now is not None else time.time()
     ranked = []
     for row in candidates:
         score = await _weighted_score(row, now)
-        ranked.append((score, row))
+        ranked.append(((score, row["torn_id"]), row))
     ranked.sort(key=lambda pair: pair[0])
     return dict(ranked[0][1])
