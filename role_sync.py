@@ -177,6 +177,25 @@ async def _sync_member_nickname(
     if member.nick == desired_nick:
         return False
 
+    bot_member = member.guild.me
+    if bot_member is not None:
+        blockers = []
+        if not bot_member.guild_permissions.manage_nicknames:
+            blockers.append("missing Manage Nicknames permission")
+        if member.guild.owner_id != bot_member.id and bot_member.top_role <= member.top_role:
+            blockers.append(
+                f"bot top role {bot_member.top_role} is not above target top role {member.top_role}"
+            )
+        if blockers:
+            LOGGER.warning(
+                "Failed to sync nickname for %s in %s to %r: %s",
+                member.id,
+                member.guild.id,
+                desired_nick,
+                "; ".join(blockers),
+            )
+            return False
+
     try:
         await member.edit(nick=desired_nick, reason=reason)
     except (discord.Forbidden, discord.HTTPException) as exc:
