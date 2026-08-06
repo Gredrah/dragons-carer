@@ -13,7 +13,7 @@ from discord.ext import commands, tasks
 import assignment
 import db
 import notifications
-from role_sync import sync_all_linked_roles
+from role_sync import sync_all_linked_nicknames, sync_all_linked_roles
 from queue_refresh import refresh_queued_orders
 import torn_api
 from config import cfg
@@ -85,6 +85,7 @@ class ReviveBot(commands.Bot):
         await notifications.refresh_existing_order_notifications(self)
         await refresh_queued_orders(self)
         sync_linked_roles_loop.start(self)
+        sync_linked_nicknames_loop.start(self)
         sweep_timeouts.start(self)
         poll_hospital_status.start(self)
         refresh_queued_orders_loop.start(self)
@@ -113,8 +114,18 @@ async def sync_linked_roles_loop(bot: ReviveBot):
     await sync_all_linked_roles(bot)
 
 
+@tasks.loop(hours=24)
+async def sync_linked_nicknames_loop(bot: ReviveBot):
+    await sync_all_linked_nicknames(bot)
+
+
 @sync_linked_roles_loop.before_loop
 async def _before_sync_linked_roles_loop():
+    await bot.wait_until_ready()
+
+
+@sync_linked_nicknames_loop.before_loop
+async def _before_sync_linked_nicknames_loop():
     await bot.wait_until_ready()
 
 

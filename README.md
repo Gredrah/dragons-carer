@@ -1,54 +1,143 @@
-# Revive Storefront Bot — Scaffold
+# Revive Storefront Bot
 
-A Discord bot that lets buyers request Torn revives, routes the request to an
-available reviver, and tracks payment via the *reviver's* API key (never
-custodial — the bot never touches money or items itself).
+A Discord bot for running a Torn revive storefront. It handles buyer and seller/medic registration, revive requests, reviver assignment, order tracking, and moderation review flow.
 
-This is a **prototype skeleton**, sized for a solo "storefront of one" (you as
-the only faction/reviver pool) that can grow into multi-reviver later without
-a rewrite. Core pieces:
+The bot is built around a few core ideas:
 
-- `db.py` — SQLite schema + async helpers (orders, revivers, buyers, incidents)
-- `torn_api.py` — thin wrapper around the Torn API (status checks, log/event polling)
-- `state.py` — the order state machine (single source of truth for valid transitions)
-- `bot.py` — bot entrypoint, background pollers (timeouts, hospital status, payment matching)
-- `cogs/linking.py` — `/link` (self-serve, buyers) and `/link_reviver` (mod-only, assigns tier) — verifies a submitted API key against Torn and stores the Discord↔Torn ID mapping. Everything else depends on this.
-- `cogs/buyer.py` — `/request`, `/status` slash commands
-- `cogs/reviver.py` — `/available`, `/status_panel`, claim/forward/deliver buttons
-- `cogs/moderation.py` — `/review` command + mod-queue notifications
+- Torn API keys are verified against Torn before a Discord account is linked.
+- Stored Torn API keys are encrypted at rest with Fernet.
+- Discord nicknames are synced to `{Torn Name} [{ID}]` during registration and re-verified on a daily loop.
+- Buyer and reviver roles are synced automatically from the stored link data.
+- Payment confirmation is reviver-driven after delivery; the bot does not rely on polling Torn logs for payment detection.
 
-## Not yet wired up (TODO, flagged inline in code)
+## Project Layout
 
-- **Notifications.** Claim/forward pings, buyer DMs on assignment/delivery/
-  closure, and mod-queue alerts are all left as explicit `# TODO` markers at
-  the point they should fire — the state machine transitions and DB writes
-  around them are real and working, this is just the "tell a human" layer.
-- **Exact field name for player ID in the key-verification response**
-  (`torn_api.verify_key_and_get_id`). It checks a few plausible locations
-  but hasn't been confirmed against a live key — do that before `/link`
-  goes out to real users, since a silent mismatch here means legit keys
-  get rejected.
-- **Cross-faction target visibility.** `/request` and the hospital-status
-  poller both fall back gracefully (skip the check / stay queued) if the
-  *target's* Torn ID isn't linked to a stored key — meaning right now only
-  targets who are themselves buyers/revivers in your DB get the pre-flight
-  hospital check and the auto-close-when-released behavior. Worth deciding
-  whether to require targets to link too, or add a faction-key path.
-- **Payment confirmation is now reviver-driven.** The bot no longer depends
-  on polling Torn logs for a payment match. After delivery, the reviver
-  presses a confirm button, then the buyer gets a short dispute window before
-  the order closes automatically.
-- **Encryption at rest for stored API keys.** `db.py` currently stores keys
-  as plaintext columns for scaffold simplicity — swap in `cryptography`'s
-  `Fernet` (or similar) before any real keys are stored. Marked with a TODO.
-- **Rate limiting.** Torn allows 100 req/min per user across all keys. The
-  poller intervals in `bot.py` are conservative defaults — tune based on how
-  many reviver keys you're polling concurrently.
+- `bot.py` - bot entrypoint and background loops
+- `db.py` - SQLite schema and async helpers for buyers, revivers, orders, incidents, and sticky messages
+- `torn_api.py` - Torn API wrapper for identity verification, hospital status, revive skill, and revive history checks
+- `role_sync.py` - role reconciliation and nickname verification for linked members
+- `state.py` - order and incident state definitions
+- `notifications.py` - Discord DM/channel notification helpers and persistent message refresh logic
+- `assignment.py` - reviver selection and fairness logic
+- `cogs/linking.py` - buyer and seller/medic registration and unregister flow
+- `cogs/buyer.py` - revive request flow and buyer order actions
+- `cogs/reviver.py` - reviver availability, assignment controls, and delivery/payment actions
+- `cogs/moderation.py` - moderation review actions for flagged orders
+
+## Features
+
+- Buyer registration with `/link`
+- Seller/medic registration with `/link_reviver` or the registration panel
+- Buyer and seller/medic role syncing
+- Torn nickname syncing on registration and daily re-checks
+- Revive request creation with tier selection and optional target ID
+- Assignment, forwarding, claim, delivery, and payment confirmation flow
+- Reviver status toggling with `/available`
+- Reviver status panel with reporting controls
+- Moderation review for flagged orders with `/review`
+- Persistent Discord views that survive bot restarts
+
+## Commands
+
+### Linking and registration
+
+- `/link` - self-serve buyer registration from a Torn API key
+- `/link_reviver` - mod-only seller/medic registration for a specific member
+- `/register_panel` - post the buyer or seller/medic registration panel
+- `/unregister` - remove buyer, seller/medic, or both links
+
+### Buyer flow
+
+- `/request` - create a revive order
+- `/panel` - post the revive request panel
+- `/status` - check one of your orders
+- `/cancel` - cancel an active order you own
+
+### Reviver flow
+
+- `/available` - mark yourself online or offline
+- `/status_panel` - post the reviver status panel
+
+### Moderation
+
+- `/review` - review a flagged order as a moderator
+
+## Runtime Behavior
+
+The bot runs several background loops:
+
+- role sync for linked accounts
+- nickname verification for linked accounts
+- timeout sweep for assigned, claimed, delivered, and paid orders
+- queue reassignment when revivers come online
+- active order reminder refreshes
+- hospital-status polling for active orders
+
+The nickname verification uses the Torn API key provided at registration whenever possible. The daily loop falls back to the stored linked key so names stay aligned even if the user changes their Torn name later.
 
 ## Setup
 
+1. Install dependencies:
+
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # fill in DISCORD_TOKEN, GUILD ids, etc.
+```
+
+2. Copy and fill the environment file:
+
+```bash
+cp .env.example .env
+```
+
+On Windows PowerShell, use:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+3. Set the required values in `.env`:
+
+- `DISCORD_TOKEN`
+- `DB_ENCRYPTION_KEY`
+- Guild IDs and channel IDs for your storefront, ops, forwarding, mod queue, and reviver ping channels
+- Optional revive price fields used in the revive request panel
+
+4. Run the bot:
+
+```bash
 python bot.py
 ```
+
+## Testing
+
+Run the available unit tests with:
+
+```bash
+py -m unittest
+```
+
+## Environment Variables
+
+The most important values are listed below. See `.env.example` for the complete set.
+
+- `DISCORD_TOKEN` - bot token from the Discord Developer Portal
+- `STOREFRONT_GUILD_ID` - guild used for buyer-facing commands and panels
+- `OPS_GUILD_ID` - ops/mod guild used for role and nickname sync
+- `FORWARDING_GUILD_ID` - forwarding guild ID if used by your Discord setup
+- `MOD_QUEUE_CHANNEL_ID` - channel used for moderation alerts
+- `REVIVER_PING_CHANNEL_ID` - channel watched for active order reminder refreshes
+- `FORWARDING_CHANNEL_ID` - channel used for forwarded order claims
+- `OPS_CHANNEL_ID` - ops alert channel
+- `FORWARDING_JOIN_LINK` - optional footer text for forwarded order embeds
+- `DB_ENCRYPTION_KEY` - Fernet key for encrypting stored Torn API keys
+- `DB_PATH` - SQLite database path
+- `STANDARD_REVIVE_PRICE`, `T75_REVIVE_PRICE`, `T100_REVIVE_PRICE` - values shown in the revive request panel
+
+Other settings control timeouts, poll intervals, UI limits, and assignment balancing. The defaults are tuned for a small storefront and can be adjusted in `.env`.
+
+## Notes
+
+- The bot verifies Torn API keys against Torn before linking a Discord account.
+- Nickname syncing is designed so the registration path can later be extracted into a dedicated verification panel.
+- Some Discord actions may fail if the bot lacks permission to manage nicknames or roles in the target guilds.
+- Torn API rate limits still matter; keep the poll intervals conservative if you operate with multiple linked reviver accounts.

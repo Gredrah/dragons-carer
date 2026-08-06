@@ -29,6 +29,12 @@ class TornAPIError(Exception):
         super().__init__(f"Torn API error {code}: {message}")
 
 
+@dataclass
+class TornIdentity:
+    torn_id: int
+    name: str
+
+
 async def _get(session: aiohttp.ClientSession, path: str, params: dict[str, Any]) -> dict:
     async with session.get(
         f"{TORN_BASE_URL}{path}", params=params, timeout=cfg.torn_api_timeout_seconds
@@ -48,14 +54,27 @@ async def verify_key_and_get_id(session: aiohttp.ClientSession, api_key: str) ->
     Torn v2 commonly returns the owner ID in `profile.id` for
     `selections=basic`; keep legacy fallbacks for compatibility.
     """
+    identity = await verify_key_and_get_identity(session, api_key)
+    return identity.torn_id
+
+
+async def verify_key_and_get_identity(session: aiohttp.ClientSession, api_key: str) -> TornIdentity:
+    """Confirms an API key is valid and returns the Torn account identity."""
     data = await _get(session, TORN_V2_USER_PATH, {"selections": "basic", "key": api_key})
-    candidate = (
-        data.get("profile", {}).get("id")
-        or data.get("profile", {}).get("player_id")
+    profile = data.get("profile", {})
+    candidate_id = profile.get("id") or profile.get("player_id") or data.get("id")
+    candidate_name = (
+        profile.get("name")
+        or profile.get("player_name")
+        or profile.get("username")
+        or data.get("name")
+        or data.get("player_name")
     )
-    if candidate is None:
+    if candidate_id is None:
         raise TornAPIError(0, "Could not determine player ID from key response — check response shape.")
-    return int(candidate)
+    if not candidate_name:
+        raise TornAPIError(0, "Could not determine player name from key response — check response shape.")
+    return TornIdentity(torn_id=int(candidate_id), name=str(candidate_name).strip())
 
 
 @dataclass

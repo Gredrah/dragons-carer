@@ -15,6 +15,7 @@ import torn_api
 
 LOGGER = logging.getLogger(__name__)
 MANAGED_ROLE_NAMES = tuple(dict.fromkeys(BUYER_ROLE_NAMES + REVIVER_ROLE_NAMES))
+NICKNAME_SUFFIX_TEMPLATE = " [{torn_id}]"
 
 
 def _managed_guild_ids() -> tuple[int, ...]:
@@ -24,6 +25,18 @@ def _managed_guild_ids() -> tuple[int, ...]:
     if cfg.ops_guild_id and cfg.ops_guild_id not in guild_ids:
         guild_ids.append(cfg.ops_guild_id)
     return tuple(guild_ids)
+
+
+def format_torn_nickname(torn_name: str, torn_id: int, *, max_length: int = 32) -> str:
+    suffix = NICKNAME_SUFFIX_TEMPLATE.format(torn_id=torn_id)
+    cleaned_name = " ".join(str(torn_name).split()).strip()
+    if len(cleaned_name) + len(suffix) <= max_length:
+        return f"{cleaned_name}{suffix}"
+
+    available = max_length - len(suffix)
+    if available <= 0:
+        return suffix.strip()
+    return f"{cleaned_name[:available].rstrip()}{suffix}"
 
 
 def _find_role(guild: discord.Guild, role_name: str) -> discord.Role | None:
@@ -97,6 +110,37 @@ async def _get_revive_skill_level(reviver_row) -> float | None:
             return None
 
 
+async def _get_linked_identity(discord_id: str) -> torn_api.TornIdentity | None:
+    api_key = await db.get_api_key_for_discord(discord_id)
+    if not api_key:
+        return None
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            return await torn_api.verify_key_and_get_identity(session, api_key)
+        except torn_api.TornAPIError as exc:
+            LOGGER.warning("Failed to verify Torn identity for %s: Torn API %s %s", discord_id, exc.code, exc.message)
+            return None
+        except Exception:
+            LOGGER.warning("Failed to verify Torn identity for %s", discord_id)
+            return None
+
+
+async def _get_identity_from_api_key(api_key: str) -> torn_api.TornIdentity | None:
+    if not api_key:
+        return None
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            return await torn_api.verify_key_and_get_identity(session, api_key)
+        except torn_api.TornAPIError as exc:
+            LOGGER.warning("Failed to verify Torn identity from provided key: Torn API %s %s", exc.code, exc.message)
+            return None
+        except Exception:
+            LOGGER.warning("Failed to verify Torn identity from provided key")
+            return None
+
+
 async def _resolve_member(guild: discord.Guild, discord_id: str) -> discord.Member | None:
     try:
         member_id = int(discord_id)
@@ -111,6 +155,25 @@ async def _resolve_member(guild: discord.Guild, discord_id: str) -> discord.Memb
         return await guild.fetch_member(member_id)
     except (discord.NotFound, discord.Forbidden, discord.HTTPException):
         return None
+
+
+async def _sync_member_nickname(
+    member: discord.Member,
+    identity: torn_api.TornIdentity,
+    *,
+    reason: str,
+) -> bool:
+    desired_nick = format_torn_nickname(identity.name, identity.torn_id)
+    if member.nick == desired_nick:
+        return False
+
+    try:
+        await member.edit(nick=desired_nick, reason=reason)
+    except (discord.Forbidden, discord.HTTPException):
+        LOGGER.warning("Failed to sync nickname for %s in %s", member.id, member.guild.id)
+        return False
+
+    return True
 
 
 async def _sync_member_truth(
@@ -184,6 +247,53 @@ async def sync_member_roles(bot: commands.Bot, discord_id: str, *, reason: str) 
             has_buyer=has_buyer,
             has_reviver=has_reviver,
             reason=reason,
+        )
+
+
+async def sync_member_nickname(
+    bot: commands.Bot,
+    discord_id: str,
+    *,
+    reason: str,
+    api_key: str | None = None,
+    identity: torn_api.TornIdentity | None = None,
+) -> bool:
+    linked_identity = identity
+    if linked_identity is None and api_key is not None:
+        linked_identity = await _get_identity_from_api_key(api_key)
+    if linked_identity is None:
+        linked_identity = await _get_linked_identity(discord_id)
+    if linked_identity is None:
+        return False
+
+    changed = False
+    for guild_id in _managed_guild_ids():
+        guild = bot.get_guild(guild_id)
+        if guild is None:
+            continue
+
+        member = await _resolve_member(guild, discord_id)
+        if member is None:
+            continue
+
+        if await _sync_member_nickname(member, linked_identity, reason=reason):
+            changed = True
+
+    return changed
+
+
+async def sync_all_linked_nicknames(bot: commands.Bot) -> None:
+    linked_discord_ids = {
+        str(row["discord_id"]) for row in await db.list_buyers()
+    } | {
+        str(row["discord_id"]) for row in await db.list_revivers()
+    }
+
+    for discord_id in linked_discord_ids:
+        await sync_member_nickname(
+            bot,
+            discord_id,
+            reason="periodic linked-name verification",
         )
 
 

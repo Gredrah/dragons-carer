@@ -6,7 +6,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import db
-from role_sync import sync_member_roles
+from role_sync import format_torn_nickname, sync_member_nickname, sync_member_roles
 import torn_api
 from formatting import torn_link
 from state import Tier, tier_from_skill
@@ -182,15 +182,15 @@ class LinkingCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    async def _verify_torn_key(self, api_key: str) -> int:
+    async def _verify_torn_identity(self, api_key: str) -> torn_api.TornIdentity:
         async with aiohttp.ClientSession() as session:
-            return await torn_api.verify_key_and_get_id(session, api_key)
+            return await torn_api.verify_key_and_get_identity(session, api_key)
 
     async def _register_buyer(self, interaction: discord.Interaction, api_key: str) -> None:
         await interaction.response.defer(ephemeral=True)
 
         try:
-            torn_id = await self._verify_torn_key(api_key)
+            identity = await self._verify_torn_identity(api_key)
         except torn_api.TornAPIError as e:
             await interaction.followup.send(
                 f"Torn rejected that key: {e.message}. Double-check it's active (keys can be regenerated/invalidated from Torn's preferences page).",
@@ -201,14 +201,23 @@ class LinkingCog(commands.Cog):
             await interaction.followup.send(TORN_API_UNAVAILABLE_MESSAGE, ephemeral=True)
             return
 
-        await db.upsert_buyer(torn_id, str(interaction.user.id), api_key)
+        await db.upsert_buyer(identity.torn_id, str(interaction.user.id), api_key)
+        nickname = format_torn_nickname(identity.name, identity.torn_id)
+        nickname_synced = await sync_member_nickname(
+            interaction.client,
+            str(interaction.user.id),
+            reason="buyer registration synced nickname",
+            api_key=api_key,
+            identity=identity,
+        )
         await sync_member_roles(
             interaction.client,
             str(interaction.user.id),
             reason="buyer registration synced roles",
         )
+        nickname_message = f" Your nickname is now {nickname}." if nickname_synced else ""
         await interaction.followup.send(
-            f"Linked. Your Discord account is now tied to Torn ID {torn_link(torn_id)} as a buyer and the @buyer role has been synced where available.",
+            f"Linked. Your Discord account is now tied to Torn ID {torn_link(identity.torn_id)} as a buyer.{nickname_message} The @buyer role has been synced where available.",
             ephemeral=True,
         )
 
@@ -234,7 +243,7 @@ class LinkingCog(commands.Cog):
             display_name = interaction.user.mention
 
         try:
-            torn_id = await self._verify_torn_key(api_key)
+            identity = await self._verify_torn_identity(api_key)
         except torn_api.TornAPIError as e:
             await interaction.followup.send(f"Torn rejected that key: {e.message}.", ephemeral=True)
             return
@@ -257,14 +266,23 @@ class LinkingCog(commands.Cog):
 
         tier = tier_from_skill(skill_level)
 
-        await db.upsert_reviver(torn_id, discord_id, api_key, tier)
+        await db.upsert_reviver(identity.torn_id, discord_id, api_key, tier)
+        nickname = format_torn_nickname(identity.name, identity.torn_id)
+        nickname_synced = await sync_member_nickname(
+            interaction.client,
+            discord_id,
+            reason="reviver registration synced nickname",
+            api_key=api_key,
+            identity=identity,
+        )
         await sync_member_roles(
             interaction.client,
             discord_id,
             reason="reviver registration synced roles",
         )
+        nickname_message = f" Your nickname is now {nickname}." if nickname_synced else ""
         await interaction.followup.send(
-            f"Registered {display_name} as a **{tier}** reviver (Torn ID {torn_link(torn_id)}) based on revive skill and synced the reviver roles where available.",
+            f"Registered {display_name} as a **{tier}** reviver (Torn ID {torn_link(identity.torn_id)}) based on revive skill.{nickname_message} Synced the reviver roles where available.",
             ephemeral=True,
         )
 
