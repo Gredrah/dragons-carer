@@ -582,7 +582,7 @@ def build_online_revivers_content(revivers: Iterable[dict]) -> str:
     prefix = cfg.online_revivers_empty_prefix.strip()
     empty_message = "No revivers are online right now."
     if prefix:
-        empty_message = f"{prefix}\n{empty_message}"
+        return f"**{prefix}**\n{header}{empty_message}"
     return header + empty_message
 
 
