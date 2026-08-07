@@ -6,6 +6,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import db
+import notifications
 from config import cfg
 from role_sync import (
     format_torn_nickname,

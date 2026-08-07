@@ -325,6 +325,31 @@ async def sync_linked_member_state(
     return changed
 
 
+async def sync_linked_member_from_db(member: discord.Member, *, reason: str) -> bool:
+    buyer = await db.get_buyer_by_discord(str(member.id))
+    reviver = await db.get_reviver_by_discord(str(member.id))
+    if buyer is None and reviver is None:
+        return False
+
+    identity = await _get_linked_identity(str(member.id))
+    if identity is None:
+        api_key = await db.get_api_key_for_discord(str(member.id))
+        if api_key is not None:
+            identity = await _get_identity_from_api_key(api_key)
+
+    has_buyer = buyer is not None
+    has_reviver = reviver is not None
+    verified = has_buyer or has_reviver
+    return await sync_linked_member_state(
+        member,
+        reason=reason,
+        identity=identity,
+        has_buyer=has_buyer,
+        has_reviver=has_reviver,
+        verified=verified,
+    )
+
+
 async def sync_member_verification(bot: commands.Bot, discord_id: str, *, reason: str, verified: bool) -> None:
     for guild_id in await _managed_guild_ids():
         guild = bot.get_guild(guild_id)

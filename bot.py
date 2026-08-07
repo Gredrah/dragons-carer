@@ -13,7 +13,7 @@ from discord.ext import commands, tasks
 import assignment
 import db
 import notifications
-from role_sync import sync_all_linked_nicknames, sync_all_linked_roles
+from role_sync import sync_all_linked_nicknames, sync_all_linked_roles, sync_linked_member_from_db
 from queue_refresh import refresh_queued_orders
 import torn_api
 from config import cfg
@@ -109,6 +109,12 @@ class ReviveBot(commands.Bot):
             return
 
         await notifications.refresh_active_order_reminder(self)
+
+    async def on_member_join(self, member: discord.Member):
+        if member.bot:
+            return
+
+        await sync_linked_member_from_db(member, reason="linked member joined guild")
 
 
 bot = ReviveBot()
