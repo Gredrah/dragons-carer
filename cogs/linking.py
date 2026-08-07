@@ -20,8 +20,7 @@ from formatting import torn_link
 from state import Tier, tier_from_skill
 
 
-BUYER_API_KEY_URL = "https://www.torn.com/preferences.php#tab=api?step=addNewKey&title=ReviveStorefront-Buyer&user=basic,revivesfull"
-REVIVER_API_KEY_URL = "https://www.torn.com/preferences.php#tab=api?step=addNewKey&title=ReviveStorefront-Reviver&user=basic,revivesfull,skills"
+API_KEY_URL = "https://www.torn.com/preferences.php#tab=api?step=addNewKey&title=Dragons-Carer&user=basic,revivesfull,skills"
 TORN_API_UNAVAILABLE_MESSAGE = "Couldn't reach the Torn API right now — try again in a moment."
 BUYER_REGISTRATION_PANEL_TITLE = "Buyer Registration Panel"
 REVIVER_REGISTRATION_PANEL_TITLE = "Seller / Medic Registration Panel"
@@ -83,7 +82,7 @@ def build_buyer_registration_panel_embed() -> discord.Embed:
     embed.add_field(
         name="Instructions",
         value=(
-            f"Use [this Torn API key generator]({BUYER_API_KEY_URL}) to create the buyer key, "
+            f"Use [this Torn API key generator]({API_KEY_URL}) to create the buyer key, "
             "then link it below. The bot will grant the @buyer role."
         ),
         inline=False,
@@ -104,7 +103,7 @@ def build_reviver_registration_panel_embed() -> discord.Embed:
     embed.add_field(
         name="Instructions",
         value=(
-            f"Use [this Torn API key generator]({REVIVER_API_KEY_URL}) to create the reviver key, "
+            f"Use [this Torn API key generator]({API_KEY_URL}) to create the reviver key, "
             "then link it below. The bot will detect your tier from your revive skill."
         ),
         inline=False,
@@ -245,7 +244,7 @@ class BuyerRegistrationPanelView(discord.ui.View):
             discord.ui.Button(
                 label="Generate Buyer API Key",
                 style=discord.ButtonStyle.link,
-                url=BUYER_API_KEY_URL,
+                url=API_KEY_URL,
             )
         )
 
@@ -268,7 +267,7 @@ class ReviverRegistrationPanelView(discord.ui.View):
             discord.ui.Button(
                 label="Generate Seller / Medic API Key",
                 style=discord.ButtonStyle.link,
-                url=REVIVER_API_KEY_URL,
+                url=API_KEY_URL,
             )
         )
 
