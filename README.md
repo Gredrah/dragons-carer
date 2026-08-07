@@ -30,7 +30,7 @@ The bot is built around a few core ideas:
 - Seller/medic registration with `/link_reviver` or the registration panel
 - Buyer and seller/medic role syncing
 - Torn nickname syncing on registration and daily re-checks
-- Revive request creation with tier selection and optional target ID
+- Revive request creation through the Torn userscript as the primary buyer entrypoint, with tier selection and optional target ID
 - Assignment, forwarding, claim, delivery, and payment confirmation flow
 - Reviver status toggling with `/available`
 - Reviver status panel with reporting controls
@@ -48,7 +48,8 @@ The bot is built around a few core ideas:
 
 ### Buyer flow
 
-- `/request` - create a revive order
+- The Torn userscript in `Care-Button/Dragons-Care-Button` is the primary way buyers submit revive orders
+- `/request` - create a revive order manually from Discord if needed
 - `/panel` - post the revive request panel
 - `/status` - check one of your orders
 - `/cancel` - cancel an active order you own
@@ -128,6 +129,7 @@ The most important values are listed below. See `.env.example` for the complete 
 - `DB_ENCRYPTION_KEY` - Fernet key for encrypting stored Torn API keys
 - `DB_PATH` - SQLite database path
 - `STANDARD_REVIVE_PRICE`, `T75_REVIVE_PRICE`, `T100_REVIVE_PRICE` - values shown in the revive request panel
+- `Care-Button/` - browser-side userscript plus API host for the primary buyer order submission flow
 - `REVIVER_REGISTRATION_FACTION_MATCH_ENABLED` - set to `true` to restrict seller / medic registration to one Torn faction
 - `REVIVER_REGISTRATION_FACTION_ID` - Torn faction ID used for the registration restriction
 - `REVIVER_REGISTRATION_FACTION_NAME` - Torn faction name shown in the registration panel and used as a fallback match
@@ -136,6 +138,7 @@ Other settings control timeouts, poll intervals, UI limits, and assignment balan
 
 ## Notes
 
+- Buyers should submit revive orders through the userscript in `Care-Button/Dragons-Care-Button`; the `/request` command remains available as a fallback/manual path.
 - The bot verifies Torn API keys against Torn before linking a Discord account.
 - Nickname syncing is designed so the registration path can later be extracted into a dedicated verification panel.
 - Some Discord actions may fail if the bot lacks permission to manage nicknames or roles in the target guilds.
