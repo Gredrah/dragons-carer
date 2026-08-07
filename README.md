@@ -124,6 +124,7 @@ The most important values are listed below. See `.env.example` for the complete 
 - `DISCORD_TOKEN` - bot token from the Discord Developer Portal
 - `COMMAND_SYNC_GUILD_ID` - optional guild ID for immediate slash-command sync during development
 - `FORWARDING_JOIN_LINK` - optional footer text for forwarded order embeds
+- `ONLINE_REVIVERS_EMPTY_PREFIX` - optional one-line prefix shown before the empty online revivers message
 - `DB_ENCRYPTION_KEY` - Fernet key for encrypting stored Torn API keys
 - `DB_PATH` - SQLite database path
 - `STANDARD_REVIVE_PRICE`, `T75_REVIVE_PRICE`, `T100_REVIVE_PRICE` - values shown in the revive request panel

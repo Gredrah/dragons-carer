@@ -575,7 +575,15 @@ def build_online_revivers_content(revivers: Iterable[dict]) -> str:
         order_lines.append(f"{_tier_display_name(tier)}:")
         order_lines.extend(f"- <@{reviver['discord_id']}> | {torn_link(reviver['torn_id'])}" for reviver in tier_revivers)
 
-    return _render_limited_lines("Currently online revivers:\n", order_lines, "No revivers are online right now.")
+    header = "Currently online revivers:\n"
+    if order_lines:
+        return _render_limited_lines(header, order_lines, "No revivers are online right now.")
+
+    prefix = cfg.online_revivers_empty_prefix.strip()
+    empty_message = "No revivers are online right now."
+    if prefix:
+        empty_message = f"{prefix}\n{empty_message}"
+    return header + empty_message
 
 
 def build_reviver_order_dm_content(
