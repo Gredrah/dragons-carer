@@ -18,7 +18,7 @@ The userscript is the primary buyer submission path. Discord's `/request` comman
   "type": "Cash",
   "price": "2m",
   "skill": "Full (100%)",
-  "scriptVersion": "1.3.1"
+  "scriptVersion": "1.0.0"
 }
 ```
 
