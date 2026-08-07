@@ -7,7 +7,13 @@ from discord.ext import commands
 
 import db
 from config import cfg
-from role_sync import format_torn_nickname, sync_member_nickname, sync_member_roles, sync_member_verification
+from role_sync import (
+    format_torn_nickname,
+    sync_linked_member_state,
+    sync_member_nickname,
+    sync_member_roles,
+    sync_member_verification,
+)
 import torn_api
 from formatting import torn_link
 from state import Tier, tier_from_skill
@@ -312,6 +318,15 @@ class LinkingCog(commands.Cog):
 
         await db.upsert_buyer(identity.torn_id, str(interaction.user.id), api_key)
         nickname = format_torn_nickname(identity.name, identity.torn_id)
+        if isinstance(interaction.user, discord.Member):
+            await sync_linked_member_state(
+                interaction.user,
+                reason="buyer registration synced linked state",
+                identity=identity,
+                has_buyer=True,
+                has_reviver=False,
+                verified=True,
+            )
         nickname_synced = await sync_member_nickname(
             interaction.client,
             str(interaction.user.id),
@@ -402,6 +417,15 @@ class LinkingCog(commands.Cog):
 
         await db.upsert_reviver(identity.torn_id, discord_id, api_key, tier)
         nickname = format_torn_nickname(identity.name, identity.torn_id)
+        if isinstance(interaction.user, discord.Member):
+            await sync_linked_member_state(
+                interaction.user,
+                reason="reviver registration synced linked state",
+                identity=identity,
+                has_buyer=False,
+                has_reviver=True,
+                verified=True,
+            )
         nickname_synced = await sync_member_nickname(
             interaction.client,
             discord_id,

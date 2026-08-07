@@ -302,6 +302,29 @@ async def sync_member_roles(bot: commands.Bot, discord_id: str, *, reason: str) 
         )
 
 
+async def sync_linked_member_state(
+    member: discord.Member,
+    *,
+    reason: str,
+    identity: torn_api.TornIdentity | None,
+    has_buyer: bool,
+    has_reviver: bool,
+    verified: bool,
+) -> bool:
+    changed = False
+    if identity is not None and await _sync_member_nickname(member, identity, reason=reason):
+        changed = True
+    if await _sync_member_truth(
+        member,
+        has_buyer=has_buyer,
+        has_reviver=has_reviver,
+        is_verified=verified,
+        reason=reason,
+    ):
+        changed = True
+    return changed
+
+
 async def sync_member_verification(bot: commands.Bot, discord_id: str, *, reason: str, verified: bool) -> None:
     for guild_id in await _managed_guild_ids():
         guild = bot.get_guild(guild_id)
