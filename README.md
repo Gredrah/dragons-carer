@@ -101,7 +101,7 @@ Copy-Item .env.example .env
 - `DB_ENCRYPTION_KEY`
 - Optional revive price fields used in the revive request panel
 
-1. If you want new slash commands to appear immediately in a test guild, set `COMMAND_SYNC_GUILD_ID` to that guild before starting the bot. After the bot starts, use `/set_destination` to bind the storefront and ops guilds, plus the buyer, reviver, forwarding, ops, and mod-queue channels. For forwarding in another guild, use the raw channel ID.
+1. If you want new slash commands to appear immediately in a test guild, set `COMMAND_SYNC_GUILD_ID` to that guild before starting the bot. After the bot starts, use `/set_destination` to bind the storefront guild plus the buyer, reviver, forwarding, ops, and mod-queue channels. Forwarding may still point at a channel in another guild by using the raw channel ID.
 
 1. Run the bot:
 

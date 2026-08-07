@@ -12,7 +12,6 @@ ADMIN_ONLY_MESSAGE = "Admin permissions are required to change bot destinations.
 
 DESTINATION_CHOICES = [
     app_commands.Choice(name="Storefront guild", value="storefront_guild_id"),
-    app_commands.Choice(name="Ops guild", value="ops_guild_id"),
     app_commands.Choice(name="Buyer channel", value="buyer_channel_id"),
     app_commands.Choice(name="Reviver ping channel", value="reviver_ping_channel_id"),
     app_commands.Choice(name="Forwarding channel", value="forwarding_channel_id"),
@@ -22,7 +21,6 @@ DESTINATION_CHOICES = [
 
 GUILD_DESTINATIONS = {
     "storefront_guild_id",
-    "ops_guild_id",
 }
 
 CHANNEL_DESTINATIONS = {
@@ -35,7 +33,6 @@ CHANNEL_DESTINATIONS = {
 
 DESTINATION_LABELS = {
     "storefront_guild_id": "storefront guild",
-    "ops_guild_id": "ops guild",
     "buyer_channel_id": "buyer channel",
     "reviver_ping_channel_id": "reviver ping channel",
     "forwarding_channel_id": "forwarding channel",

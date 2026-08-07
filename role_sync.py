@@ -22,20 +22,24 @@ MANAGED_ROLE_NAMES = tuple(
 NICKNAME_SUFFIX_TEMPLATE = " [{torn_id}]"
 
 
-async def _managed_guild_ids() -> tuple[int, ...]:
+async def _managed_guild_ids(bot: commands.Bot | None = None) -> tuple[int, ...]:
     guild_ids = []
     storefront_guild_id = await db.get_setting_int("storefront_guild_id")
-    ops_guild_id = await db.get_setting_int("ops_guild_id")
     if storefront_guild_id:
         guild_ids.append(storefront_guild_id)
-    if ops_guild_id and ops_guild_id not in guild_ids:
-        guild_ids.append(ops_guild_id)
-    return tuple(guild_ids)
+    if guild_ids or bot is None:
+        return tuple(guild_ids)
+    return tuple(guild.id for guild in bot.guilds)
 
 
-async def _nickname_guild_ids() -> tuple[int, ...]:
+async def _nickname_guild_ids(bot: commands.Bot | None = None) -> tuple[int, ...]:
+    guild_ids: list[int] = []
     storefront_guild_id = await db.get_setting_int("storefront_guild_id")
-    return (storefront_guild_id,) if storefront_guild_id else ()
+    if storefront_guild_id:
+        guild_ids.append(storefront_guild_id)
+    elif bot is not None:
+        guild_ids.extend(guild.id for guild in bot.guilds)
+    return tuple(guild_ids)
 
 
 def format_torn_nickname(torn_name: str, torn_id: int, *, max_length: int = 32) -> str:
@@ -125,6 +129,24 @@ async def _get_revive_skill_level(reviver_row) -> float | None:
                 exc.message,
             )
             return None
+
+
+async def _resolve_reviver_tier_role_names(reviver_row) -> set[str]:
+    stored_tier = reviver_row["tier"]
+    skill_level = await _get_revive_skill_level(reviver_row)
+    if skill_level is None:
+        return _reviver_tier_role_names_for_stored_tier(stored_tier)
+
+    skill_tier = tier_from_skill(skill_level)
+    if skill_tier != stored_tier:
+        # Keep the DB tier (what assignment.py actually routes on)
+        # in sync with the reviver's current skill, not just their
+        # Discord roles -- otherwise a reviver who's leveled up
+        # keeps getting routed at their old, stale tier.
+        await db.set_reviver_tier(reviver_row["torn_id"], skill_tier)
+        stored_tier = skill_tier
+
+    return _reviver_tier_role_names_for_skill(skill_level) or _reviver_tier_role_names_for_stored_tier(stored_tier)
 
 
 async def _get_linked_identity(discord_id: str) -> torn_api.TornIdentity | None:
@@ -224,37 +246,15 @@ async def _sync_member_nickname(
     return True
 
 
-async def _sync_member_truth(
+async def _sync_named_roles(
     member: discord.Member,
+    desired_role_names: set[str],
     *,
-    has_buyer: bool,
-    has_reviver: bool,
-    is_verified: bool,
     reason: str,
+    managed_role_names: tuple[str, ...] = MANAGED_ROLE_NAMES,
 ) -> bool:
-    desired_role_names = _desired_role_names(has_buyer, has_reviver)
-    desired_role_names.update(_verification_role_names(is_verified))
-    if has_reviver:
-        reviver_row = await db.get_reviver_by_discord(str(member.id))
-        skill_level = None
-        stored_tier = None
-        if reviver_row is not None:
-            stored_tier = reviver_row["tier"]
-            skill_level = await _get_revive_skill_level(reviver_row)
-            if skill_level is not None:
-                skill_tier = tier_from_skill(skill_level)
-                if skill_tier != stored_tier:
-                    # Keep the DB tier (what assignment.py actually routes on)
-                    # in sync with the reviver's current skill, not just their
-                    # Discord roles -- otherwise a reviver who's leveled up
-                    # keeps getting routed at their old, stale tier.
-                    await db.set_reviver_tier(reviver_row["torn_id"], skill_tier)
-                    stored_tier = skill_tier
-        tier_role_names = _reviver_tier_role_names_for_skill(skill_level)
-        if not tier_role_names:
-            tier_role_names = _reviver_tier_role_names_for_stored_tier(stored_tier)
-        desired_role_names.update(tier_role_names)
-    managed_roles = [role for role in member.roles if role.name.lower() in MANAGED_ROLE_NAMES]
+    managed_role_lookup = {name.lower() for name in managed_role_names}
+    managed_roles = [role for role in member.roles if role.name.lower() in managed_role_lookup]
     desired_roles = []
     for role_name in desired_role_names:
         role = await _ensure_role(member.guild, role_name)
@@ -279,6 +279,23 @@ async def _sync_member_truth(
     return True
 
 
+async def _sync_member_truth(
+    member: discord.Member,
+    *,
+    has_buyer: bool,
+    has_reviver: bool,
+    is_verified: bool,
+    reason: str,
+) -> bool:
+    desired_role_names = _desired_role_names(has_buyer, has_reviver)
+    desired_role_names.update(_verification_role_names(is_verified))
+    if has_reviver:
+        reviver_row = await db.get_reviver_by_discord(str(member.id))
+        if reviver_row is not None:
+            desired_role_names.update(await _resolve_reviver_tier_role_names(reviver_row))
+    return await _sync_named_roles(member, desired_role_names, reason=reason)
+
+
 async def sync_member_roles(bot: commands.Bot, discord_id: str, *, reason: str) -> None:
     buyer = await db.get_buyer_by_discord(discord_id)
     reviver = await db.get_reviver_by_discord(discord_id)
@@ -286,7 +303,7 @@ async def sync_member_roles(bot: commands.Bot, discord_id: str, *, reason: str) 
     has_reviver = reviver is not None
     is_verified = has_buyer or has_reviver
 
-    for guild_id in await _managed_guild_ids():
+    for guild_id in await _managed_guild_ids(bot):
         guild = bot.get_guild(guild_id)
         if guild is None:
             continue
@@ -351,7 +368,7 @@ async def sync_linked_member_from_db(member: discord.Member, *, reason: str) -> 
 
 
 async def sync_member_verification(bot: commands.Bot, discord_id: str, *, reason: str, verified: bool) -> None:
-    for guild_id in await _managed_guild_ids():
+    for guild_id in await _managed_guild_ids(bot):
         guild = bot.get_guild(guild_id)
         if guild is None:
             continue
@@ -361,31 +378,12 @@ async def sync_member_verification(bot: commands.Bot, discord_id: str, *, reason
             continue
 
         desired_role_names = _verification_role_names(verified)
-        managed_roles = [role for role in member.roles if role.name.lower() in {name.lower() for name in VERIFIED_ROLE_NAMES + UNVERIFIED_ROLE_NAMES}]
-        desired_roles = []
-        for role_name in desired_role_names:
-            role = await _ensure_role(member.guild, role_name)
-            if role is not None:
-                desired_roles.append(role)
-
-        to_add = [role for role in desired_roles if role not in member.roles]
-        to_remove = [role for role in managed_roles if role.name.lower() not in desired_role_names]
-
-        if not to_add and not to_remove:
-            continue
-
-        try:
-            if to_add:
-                await member.add_roles(*to_add, reason=reason)
-            if to_remove:
-                await member.remove_roles(*to_remove, reason=reason)
-        except (discord.Forbidden, discord.HTTPException) as exc:
-            LOGGER.warning(
-                "Failed to sync verification roles for %s in %s: %s",
-                member.id,
-                member.guild.id,
-                exc,
-            )
+        await _sync_named_roles(
+            member,
+            desired_role_names,
+            reason=reason,
+            managed_role_names=VERIFIED_ROLE_NAMES + UNVERIFIED_ROLE_NAMES,
+        )
 
 
 
@@ -406,7 +404,7 @@ async def sync_member_nickname(
         return False
 
     changed = False
-    for guild_id in await _nickname_guild_ids():
+    for guild_id in await _nickname_guild_ids(bot):
         guild = bot.get_guild(guild_id)
         if guild is None:
             continue
@@ -440,7 +438,7 @@ async def sync_all_linked_roles(bot: commands.Bot) -> None:
     buyers = {str(row["discord_id"]): row for row in await db.list_buyers()}
     revivers = {str(row["discord_id"]): row for row in await db.list_revivers()}
 
-    for guild_id in await _managed_guild_ids():
+    for guild_id in await _managed_guild_ids(bot):
         guild = bot.get_guild(guild_id)
         if guild is None:
             continue

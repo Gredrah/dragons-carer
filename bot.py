@@ -77,8 +77,8 @@ class ReviveBot(commands.Bot):
             guild = discord.Object(id=cfg.command_sync_guild_id)
             self.tree.copy_global_to(guild=guild)
             await self.tree.sync(guild=guild)
-
-        await self.tree.sync()
+        else:
+            await self.tree.sync()
 
         await refresh_request_panels(self)
         await refresh_registration_panels(self)
