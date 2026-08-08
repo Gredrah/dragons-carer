@@ -52,6 +52,7 @@ def _init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS revive_requests (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                api_key TEXT NOT NULL,
                 api_key_suffix TEXT NOT NULL,
                 type TEXT NOT NULL,
                 price TEXT NOT NULL,
@@ -65,6 +66,12 @@ def _init_db() -> None:
             )
             """
         )
+        existing_columns = {
+            row[1]
+            for row in db.execute("PRAGMA table_info(revive_requests)").fetchall()
+        }
+        if "api_key" not in existing_columns:
+            db.execute("ALTER TABLE revive_requests ADD COLUMN api_key TEXT")
         db.commit()
 
 
@@ -128,11 +135,12 @@ def _store_request(request: EnrichedRequest) -> int:
         cursor = db.execute(
             """
             INSERT INTO revive_requests (
-                api_key_suffix, type, price, skill, script_version,
+                api_key, api_key_suffix, type, price, skill, script_version,
                 torn_name, torn_id, received_at, raw_payload, status
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')
             """,
             (
+                request.apiKey,
                 _mask_api_key(request.apiKey),
                 request.type,
                 request.price,
