@@ -797,8 +797,7 @@ async def _maintain_sticky_message(
     if state is not None and int(state["channel_id"]) == channel_id:
         stored_message = await _fetch_message(channel, int(state["message_id"]))
 
-    last_message = await _fetch_last_message(channel)
-    if stored_message is not None and last_message is not None and last_message.id == stored_message.id:
+    if stored_message is not None:
         try:
             await stored_message.edit(content=content)
             await db.upsert_sticky_message(name, channel_id, stored_message.id)
